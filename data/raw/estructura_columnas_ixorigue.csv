@@ -1,0 +1,548 @@
+table_name,column_name,data_type
+AnimalAnimalHealthEvent,AnimalHealthEventsId,uuid
+AnimalAnimalHealthEvent,AnimalsId,uuid
+AnimalEarTags,EarTag,character varying
+AnimalEarTags,RanchId,uuid
+AnimalEarTags,CreatedBy,uuid
+AnimalEarTags,Created,timestamp with time zone
+AnimalEarTags,LastModifiedBy,uuid
+AnimalEarTags,LastModified,timestamp with time zone
+AnimalHealthEvents,Id,uuid
+AnimalHealthEvents,RanchId,uuid
+AnimalHealthEvents,Type,USER-DEFINED
+AnimalHealthEvents,Date,date
+AnimalHealthEvents,ClosingDate,date
+AnimalHealthEvents,Title,character varying
+AnimalHealthEvents,Description,character varying
+AnimalHealthEvents,Dosage,text
+AnimalHealthEvents,ReminderType,USER-DEFINED
+AnimalHealthEvents,CreatedBy,uuid
+AnimalHealthEvents,Created,timestamp with time zone
+AnimalHealthEvents,LastModifiedBy,uuid
+AnimalHealthEvents,LastModified,timestamp with time zone
+AnimalHealthEvents,WeightTagType,USER-DEFINED
+AnimalHealthEvents,Cost,numeric
+AnimalHealthEvents,Quantity,numeric
+AnimalLocations,AnimalId,uuid
+AnimalLocations,Location,USER-DEFINED
+AnimalLocations,DistanceFromLastLocation,double precision
+AnimalLocations,Time,timestamp with time zone
+AnimalLocations,DeviceId,uuid
+AnimalLocations,IsLowAccuracy,boolean
+AnimalLocations,Inactivity,integer
+AnimalLocations,InactivityTime,bigint
+AnimalLotUse,AnimalId,uuid
+AnimalLotUse,LotUseId,uuid
+AnimalRiskZone,AnimalId,uuid
+AnimalRiskZone,RiskZoneId,uuid
+AnimalRiskZone,LastNotificationSent,timestamp with time zone
+AnimalRiskZone,LastOutside,timestamp with time zone
+AnimalRiskZone,LastInside,timestamp with time zone
+AnimalRiskZone,IsInside,boolean
+AnimalRiskZone,IsSnoozed,boolean
+AnimalStatusEvents,Id,uuid
+AnimalStatusEvents,AnimalId,uuid
+AnimalStatusEvents,Type,USER-DEFINED
+AnimalStatusEvents,LastModified,timestamp with time zone
+AnimalStatusEvents,Title,character varying
+AnimalStatusEvents,Description,character varying
+AnimalStatusEvents,RelatedAnimalId,uuid
+AnimalStatusEvents,BirthType,USER-DEFINED
+AnimalStatusEvents,ClosingDate,date
+AnimalStatusEvents,Created,timestamp with time zone
+AnimalStatusEvents,CreatedBy,uuid
+AnimalStatusEvents,Date,date
+AnimalStatusEvents,LaborHadComplications,boolean
+AnimalStatusEvents,LastModifiedBy,uuid
+AnimalStatusEvents,MatingType,USER-DEFINED
+AnimalStatusEvents,DurationType,USER-DEFINED
+AnimalStatusEvents,SharedId,uuid
+AnimalStatusEvents,DeregisteredLocation,character varying
+AnimalStatusEvents,DeregisteredReason,USER-DEFINED
+AnimalStatusEvents,ExternalAnimalEarTag,character varying
+AnimalStatusEvents,ExternalAnimalName,character varying
+AnimalStatusEvents,WeaningWeightId,uuid
+AnimalStatusEvents,SalePrice,numeric
+AnimalStatusEvents,AbortionReason,USER-DEFINED
+AnimalWeights,Id,uuid
+AnimalWeights,AnimalId,uuid
+AnimalWeights,Tag,USER-DEFINED
+AnimalWeights,Title,character varying
+AnimalWeights,Weight,numeric
+AnimalWeights,Date,date
+AnimalWeights,WeightGroupId,uuid
+AnimalWeights,CreatedBy,uuid
+AnimalWeights,Created,timestamp with time zone
+AnimalWeights,LastModifiedBy,uuid
+AnimalWeights,LastModified,timestamp with time zone
+Animals,Id,uuid
+Animals,RanchId,uuid
+Animals,EarTag,character varying
+Animals,BirthDate,date
+Animals,Sex,USER-DEFINED
+Animals,DeviceId,uuid
+Animals,CreatedBy,uuid
+Animals,Created,timestamp with time zone
+Animals,LastModifiedBy,uuid
+Animals,LastModified,timestamp with time zone
+Animals,Name,character varying
+Animals,Description,character varying
+Animals,ZoneId,uuid
+Animals,LastIsOutsideThePolygon,boolean
+Animals,Location,USER-DEFINED
+Animals,LocationLastModified,timestamp with time zone
+Animals,ShouldNotifyOnNextLocation,boolean
+Animals,IsFavorite,boolean
+Animals,FatherId,uuid
+Animals,MotherId,uuid
+Animals,LastNoActivityNotification,timestamp with time zone
+Animals,GuideCertificate,character varying
+Animals,Origin,character varying
+Animals,RegisterReason,USER-DEFINED
+Animals,LastBirthNotification,timestamp with time zone
+Animals,IntervalFrequency,USER-DEFINED
+Animals,Deleted,timestamp with time zone
+Animals,IsDeregistered,boolean
+Animals,ExternalFatherEarTag,character varying
+Animals,ExternalFatherName,character varying
+Animals,DateOfPurchase,date
+Animals,SelfieXsUrl,text
+Animals,SelfieSUrl,text
+Animals,Cost,numeric
+Animals,Specie,USER-DEFINED
+Animals,IsLowAccuracyLocation,boolean
+Animals,Race,character varying
+Animals,ExtraData,jsonb
+Animals,LotId,uuid
+Animals,CattleCode,character varying
+Animals,LastIsOutsideThePerimeter,boolean
+Animals,LastValidLocation,USER-DEFINED
+Animals,LastValidLocationModifiedAt,timestamp with time zone
+Animals,LastNoMovementNotification,timestamp with time zone
+Animals,ConfigAnimalChangeAreaChangingToZoneId,uuid
+Animals,ConfigAnimalChangeAreaMinutesStartingTime,timestamp with time zone
+Animals,ConfigOutsideFencePerimeterActiveModeCommandCooldownSentAt,timestamp with time zone
+AnimalsZoneUses,AnimalId,uuid
+AnimalsZoneUses,ZoneUseId,uuid
+BaseUsers,Id,uuid
+BaseUsers,Roles,ARRAY
+BaseUsers,Locale,character varying
+BaseUsers,Email,character varying
+BaseUsers,Phone,character varying
+BaseUsers,CreatedBy,uuid
+BaseUsers,Created,timestamp with time zone
+BaseUsers,LastModifiedBy,uuid
+BaseUsers,LastModified,timestamp with time zone
+BaseUsers,Name,character varying
+BaseUsers,Description,character varying
+BaseUsers,Type,USER-DEFINED
+BaseUsers,LocaleType,USER-DEFINED
+BaseUsers,TenantId,uuid
+Customers,Id,uuid
+Customers,Number,integer
+Customers,Email,character varying
+Customers,Phone,character varying
+Customers,BillingAddressLine1,character varying
+Customers,BillingAddressLine2,character varying
+Customers,BillingAddressCity,character varying
+Customers,BillingAddressState,character varying
+Customers,BillingAddressPostal,character varying
+Customers,BillingAddressCountry,character varying
+Customers,TaxType,USER-DEFINED
+Customers,TaxNumber,character varying
+Customers,CreatedBy,uuid
+Customers,Created,timestamp with time zone
+Customers,LastModifiedBy,uuid
+Customers,LastModified,timestamp with time zone
+Customers,Name,character varying
+Customers,Description,character varying
+Customers,Status,USER-DEFINED
+DeviceLocations,DeviceId,uuid
+DeviceLocations,Location,USER-DEFINED
+DeviceLocations,HasLocation,boolean
+DeviceLocations,Time,timestamp with time zone
+DeviceLocations,InvalidReason,USER-DEFINED
+DeviceLocations,IsValid,boolean
+DeviceLocations,IsLowAccuracy,boolean
+DeviceLocations,TimeToFix,integer
+DeviceLocations,MaxRssi,integer
+DeviceLocations,MaxSnr,double precision
+Devices,Id,uuid
+Devices,SerialNumber,character varying
+Devices,Status,USER-DEFINED
+Devices,Type,USER-DEFINED
+Devices,MulticastGroupId,uuid
+Devices,RanchId,uuid
+Devices,DevEui,macaddr8
+Devices,CreatedBy,uuid
+Devices,Created,timestamp with time zone
+Devices,LastModifiedBy,uuid
+Devices,LastModified,timestamp with time zone
+Devices,MulticastGroupIndex,integer
+Devices,LastSeenOn,timestamp with time zone
+Devices,Model,USER-DEFINED
+Devices,BatteryEstimation,double precision
+Devices,BatteryEstimationDate,date
+Devices,ChangedBatteryOn,date
+Devices,FirstAnimalInstallationOn,date
+Devices,LastUplinkCount,bigint
+Devices,LostUplinkCount,bigint
+Devices,ManufacturedOn,date
+Devices,UpdatedBatteryEstimationOn,timestamp with time zone
+Devices,UplinksPerDay,integer
+Devices,AverageGpsTtf,double precision
+Devices,ResetsCount,integer
+Devices,SumUplinksCount,bigint
+Devices,LastFPortZero,timestamp with time zone
+Devices,LastMaxRssi,integer
+Devices,LastMaxSnr,double precision
+Devices,ErrorStatus,USER-DEFINED
+Devices,LastValidLocationOn,timestamp with time zone
+Devices,LastTrackingDownlinkSentAt,timestamp with time zone
+Devices,IsLowAccuracyLocation,boolean
+Devices,LastLocation,USER-DEFINED
+Devices,StatusType,USER-DEFINED
+Devices,Disabled,boolean
+GpsFilterEvents,DeviceId,uuid
+GpsFilterEvents,Type,USER-DEFINED
+GpsFilterEvents,FixedLocationsInUplink,smallint
+GpsFilterEvents,LatestLocationTimestamp,timestamp with time zone
+GpsFilterEvents,LatestLocationDistanceToPolygon,double precision
+GpsFilterEvents,MinusOneLocationTimestamp,timestamp with time zone
+GpsFilterEvents,MinusOneLocationDistanceToPolygon,double precision
+GpsFilterEvents,MinusOneDataSource,USER-DEFINED
+GpsFilterEvents,FalseReason,USER-DEFINED
+GpsFilterEvents,Returned,boolean
+GpsFilterEvents,Time,timestamp with time zone
+GpsFilterEvents,LatestIsOutsideThePolygon,boolean
+GpsFilterEvents,MinusOneIsOutsideThePolygon,boolean
+GpsFilterEvents,MinusTwoDataSource,USER-DEFINED
+GpsFilterEvents,MinusTwoIsOutsideThePolygon,boolean
+GpsFilterEvents,MinusTwoLocationDistanceToPolygon,double precision
+GpsFilterEvents,MinusTwoLocationTimestamp,timestamp with time zone
+GpsFilterEvents,VirtualFenceThreshold,integer
+InternalNotifications,EntityId,uuid
+InternalNotifications,EntityType,text
+InternalNotifications,NotificationType,text
+InternalNotifications,Timestamp,timestamp with time zone
+LoraGateways,Id,uuid
+LoraGateways,PrivateId,character varying
+LoraGateways,Name,character varying
+LoraGateways,LastSeenAt,timestamp with time zone
+LoraGateways,Location,USER-DEFINED
+LoraGateways,CreatedAt,timestamp with time zone
+LoraGateways,FirstSeenAt,timestamp with time zone
+LoraGateways,Installed,boolean
+LoraGateways,CoverageUrl,text
+LoraGateways,SerialNumber,integer
+LotUse,Id,uuid
+LotUse,LotId,uuid
+LotUse,StartedAt,timestamp with time zone
+LotUse,EndedAt,timestamp with time zone
+LotUse,Ugm,numeric
+LotZoneLogs,Id,uuid
+LotZoneLogs,LotId,uuid
+LotZoneLogs,ZoneId,uuid
+LotZoneLogs,AreaId,uuid
+LotZoneLogs,StartedAt,timestamp with time zone
+LotZoneLogs,EndedAt,timestamp with time zone
+LotZoneLogs,AreaName,character varying
+LotZoneLogs,ZoneName,character varying
+Lots,Id,uuid
+Lots,RanchId,uuid
+Lots,Name,character varying
+Lots,IsFattening,boolean
+Lots,CreatedBy,uuid
+Lots,Created,timestamp with time zone
+Lots,LastModifiedBy,uuid
+Lots,LastModified,timestamp with time zone
+Lots,ZoneId,uuid
+Lots,HexRgbColor,character varying
+Lots,AverageAge,date
+Lots,AverageWeight,integer
+Lots,ConfigLotChangeAreaChangingToZoneId,uuid
+Lots,ConfigLotChangeAreaMinutesStartingTime,timestamp with time zone
+MulticastCommands,Id,uuid
+MulticastCommands,MulticastSubFrameId,uuid
+MulticastCommands,Type,USER-DEFINED
+MulticastCommands,Value,jsonb
+MulticastCommands,Payload,ARRAY
+MulticastCommands,Length,integer
+MulticastFrames,Id,uuid
+MulticastFrames,MulticastGroupId,uuid
+MulticastFrames,FPort,integer
+MulticastFrames,Payload,ARRAY
+MulticastFrames,Length,integer
+MulticastFrames,PayloadBase64,text
+MulticastFrames,Counter,bigint
+MulticastFrames,SentOn,timestamp with time zone
+MulticastQueueCommands,Id,uuid
+MulticastQueueCommands,DeviceId,uuid
+MulticastQueueCommands,MulticastFrameId,uuid
+MulticastQueueCommands,MulticastGroupId,uuid
+MulticastQueueCommands,MulticastGroupIndex,integer
+MulticastQueueCommands,DeviceAddress,character varying
+MulticastQueueCommands,Type,USER-DEFINED
+MulticastQueueCommands,Value,jsonb
+MulticastQueueCommands,Status,USER-DEFINED
+MulticastQueueCommands,Inserted,timestamp with time zone
+MulticastQueueCommands,Confirmed,timestamp with time zone
+MulticastQueueCommands,Sent,timestamp with time zone
+MulticastQueueCommands,Cancelled,timestamp with time zone
+MulticastSubFrames,Id,uuid
+MulticastSubFrames,MulticastFrameId,uuid
+MulticastSubFrames,Devices,ARRAY
+MulticastSubFrames,ConfirmedDevices,ARRAY
+MulticastSubFrames,Payload,ARRAY
+MulticastSubFrames,Length,integer
+NotificationTokens,Id,uuid
+NotificationTokens,UserId,uuid
+NotificationTokens,Token,text
+NotificationTokens,CreatedAt,timestamp with time zone
+Notifications,Id,uuid
+Notifications,Type,USER-DEFINED
+Notifications,Version,integer
+Notifications,Context,jsonb
+Notifications,Timestamp,timestamp with time zone
+Notifications,UserId,uuid
+Notifications,Answer,boolean
+Notifications,UniqueId,uuid
+Notifications,IsVisible,boolean
+NotificationsLocations,RanchId,uuid
+NotificationsLocations,AnimalId,uuid
+NotificationsLocations,Type,USER-DEFINED
+NotificationsLocations,Timestamp,timestamp with time zone
+NotificationsLocations,ZoneId,uuid
+NotificationsLocations,Location,USER-DEFINED
+PlatformUserEvents,UserId,uuid
+PlatformUserEvents,Time,timestamp with time zone
+PlatformUserEvents,ActionInvoked,USER-DEFINED
+PlatformUserEvents,ContextEntityId,uuid
+PlatformUserEvents,PageVisited,USER-DEFINED
+PlatformUserEvents,Type,USER-DEFINED
+PlatformUserZone,NoNotificationsZonesId,uuid
+PlatformUserZone,UsersNotificationsId,uuid
+RanchPermissions,Id,uuid
+RanchPermissions,CreatedBy,uuid
+RanchPermissions,Created,timestamp with time zone
+RanchPermissions,LastModifiedBy,uuid
+RanchPermissions,LastModified,timestamp with time zone
+RanchPermissions,UserId,uuid
+RanchPermissions,AccessType,USER-DEFINED
+RanchPermissions,ResourceId,uuid
+Ranches,Id,uuid
+Ranches,Location,USER-DEFINED
+Ranches,CreatedBy,uuid
+Ranches,Created,timestamp with time zone
+Ranches,LastModifiedBy,uuid
+Ranches,LastModified,timestamp with time zone
+Ranches,Name,character varying
+Ranches,Description,character varying
+Ranches,Owner,uuid
+Ranches,NetworkFrequency,USER-DEFINED
+Ranches,CowMaxSpeed,numeric
+Ranches,DonkeyMaxSpeed,numeric
+Ranches,GoatMaxSpeed,numeric
+Ranches,HorseMaxSpeed,numeric
+Ranches,PigMaxSpeed,numeric
+Ranches,SheepMaxSpeed,numeric
+Ranches,PublicName,character varying
+Ranches,CampaignStartingMonth,integer
+Ranches,DisableBreedingStatistics,boolean
+Ranches,DisableFatteningStatistics,boolean
+Ranches,CustomerId,uuid
+Ranches,SigpacActive,boolean
+Ranches,TenantId,uuid
+Ranches,ExtraData,jsonb
+Ranches,Disabled,boolean
+Ranches,ConfigAnimalChangeAreaMinutesTimeWindow,integer
+Ranches,ConfigLotChangeAreaMinutesTimeWindow,integer
+Ranches,ConfigOutsideFencePerimeterActiveModeCommandCooldownMinutes,integer
+Ranches,ConfigLotChangeAreaPercentageOfDevicesToConsiderChange,numeric
+RanchesLoraGateways,Id,uuid
+RanchesLoraGateways,RanchId,uuid
+RanchesLoraGateways,GatewayId,uuid
+SpainProvinces,geo_point_2d,USER-DEFINED
+SpainProvinces,geo_shape,USER-DEFINED
+SpainProvinces,year,character varying
+SpainProvinces,acom_code,character varying
+SpainProvinces,acom_name,character varying
+SpainProvinces,prov_code,character varying
+SpainProvinces,prov_name,character varying
+SpainProvinces,prov_area_code,character varying
+SpainProvinces,prov_type,character varying
+SpainProvinces,prov_name_local,character varying
+Tenants,Id,uuid
+Tenants,PublicId,character varying
+Tenants,CreatedBy,uuid
+Tenants,Created,timestamp with time zone
+Tenants,LastModifiedBy,uuid
+Tenants,LastModified,timestamp with time zone
+Tenants,Name,character varying
+Tenants,Description,character varying
+UsersRanchNotifications,RanchId,uuid
+UsersRanchNotifications,PlatformUserId,uuid
+UsersRanchNotifications,DisabledWhatsappNotifications,boolean
+UsersRanchNotifications,DisabledNoActivityNotifications,boolean
+UsersRanchNotifications,DisabledBirthNotifications,boolean
+UsersRanchNotifications,DisabledPushNotifications,boolean
+UsersRanchNotifications,DisabledLotAreaMovementNotifications,boolean
+UsersRanchNotifications,DisabledOutsidePerimeterNotifications,boolean
+UsersRanchNotifications,DisabledNoMovementNotifications,boolean
+UsersRanchNotifications,DisabledAnimalZoneMovementNotifications,boolean
+UsersRanchPlanning,RanchId,uuid
+UsersRanchPlanning,PlatformUserId,uuid
+UsersRanchPlanning,DisabledTreatments,boolean
+UsersRanchPlanning,DisabledNextSanitations,boolean
+UsersRanchPlanning,DisabledOnAdvanced,boolean
+UsersRanchPlanning,DisabledOnBirth,boolean
+UsersRanchPlanning,DisabledDelayedBirth,boolean
+UsersRanchPlanning,DisabledEmptyNotice,boolean
+UsersRanchPlanning,DisabledHeat,boolean
+UsersRanchPlanning,DisabledLowActivity,boolean
+UsersRanchPlanning,DisabledHighActivity,boolean
+UsersRanchPlanning,DisabledLowFattening,boolean
+UsersRanchPlanning,DisabledHighFattening,boolean
+UsersRanchPlanning,DisabledReducedFattening,boolean
+UsersRanchPlanning,DisabledWeaning,boolean
+UsersRanchPlanning,DisabledPushNotifications,boolean
+Zones,Id,uuid
+Zones,RanchId,uuid
+Zones,Polygon,USER-DEFINED
+Zones,CreatedBy,uuid
+Zones,Created,timestamp with time zone
+Zones,LastModifiedBy,uuid
+Zones,LastModified,timestamp with time zone
+Zones,Name,character varying
+Zones,Description,character varying
+Zones,Active,boolean
+Zones,Area,double precision
+Zones,VirtualFenceThreshold,integer
+Zones,IsRiskZone,boolean
+Zones,IsZonesGroup,boolean
+Zones,ZonesGroupId,uuid
+Zones,ZonesGroupPolygon,USER-DEFINED
+Zones,IsPerimeter,boolean
+Zones,InsidePerimeter,boolean
+ZonesUsage,Id,uuid
+ZonesUsage,ZoneId,uuid
+ZonesUsage,StartedAt,timestamp with time zone
+ZonesUsage,EndedAt,timestamp with time zone
+ZonesUsage,Ugm,numeric
+__EFMigrationsHistory,MigrationId,character varying
+__EFMigrationsHistory,ProductVersion,character varying
+geography_columns,f_table_catalog,name
+geography_columns,f_table_schema,name
+geography_columns,f_table_name,name
+geography_columns,f_geography_column,name
+geography_columns,coord_dimension,integer
+geography_columns,srid,integer
+geography_columns,type,text
+geometry_columns,f_table_catalog,character varying
+geometry_columns,f_table_schema,name
+geometry_columns,f_table_name,name
+geometry_columns,f_geometry_column,name
+geometry_columns,coord_dimension,integer
+geometry_columns,srid,integer
+geometry_columns,type,character varying
+pg_stat_kcache,datname,name
+pg_stat_kcache,plan_user_time,double precision
+pg_stat_kcache,plan_system_time,double precision
+pg_stat_kcache,plan_minflts,numeric
+pg_stat_kcache,plan_majflts,numeric
+pg_stat_kcache,plan_nswaps,numeric
+pg_stat_kcache,plan_reads,numeric
+pg_stat_kcache,plan_reads_blks,numeric
+pg_stat_kcache,plan_writes,numeric
+pg_stat_kcache,plan_writes_blks,numeric
+pg_stat_kcache,plan_msgsnds,numeric
+pg_stat_kcache,plan_msgrcvs,numeric
+pg_stat_kcache,plan_nsignals,numeric
+pg_stat_kcache,plan_nvcsws,numeric
+pg_stat_kcache,plan_nivcsws,numeric
+pg_stat_kcache,exec_user_time,double precision
+pg_stat_kcache,exec_system_time,double precision
+pg_stat_kcache,exec_minflts,numeric
+pg_stat_kcache,exec_majflts,numeric
+pg_stat_kcache,exec_nswaps,numeric
+pg_stat_kcache,exec_reads,numeric
+pg_stat_kcache,exec_reads_blks,numeric
+pg_stat_kcache,exec_writes,numeric
+pg_stat_kcache,exec_writes_blks,numeric
+pg_stat_kcache,exec_msgsnds,numeric
+pg_stat_kcache,exec_msgrcvs,numeric
+pg_stat_kcache,exec_nsignals,numeric
+pg_stat_kcache,exec_nvcsws,numeric
+pg_stat_kcache,exec_nivcsws,numeric
+pg_stat_kcache_detail,query,text
+pg_stat_kcache_detail,top,boolean
+pg_stat_kcache_detail,datname,name
+pg_stat_kcache_detail,rolname,name
+pg_stat_kcache_detail,plan_user_time,double precision
+pg_stat_kcache_detail,plan_system_time,double precision
+pg_stat_kcache_detail,plan_minflts,bigint
+pg_stat_kcache_detail,plan_majflts,bigint
+pg_stat_kcache_detail,plan_nswaps,bigint
+pg_stat_kcache_detail,plan_reads,bigint
+pg_stat_kcache_detail,plan_reads_blks,bigint
+pg_stat_kcache_detail,plan_writes,bigint
+pg_stat_kcache_detail,plan_writes_blks,bigint
+pg_stat_kcache_detail,plan_msgsnds,bigint
+pg_stat_kcache_detail,plan_msgrcvs,bigint
+pg_stat_kcache_detail,plan_nsignals,bigint
+pg_stat_kcache_detail,plan_nvcsws,bigint
+pg_stat_kcache_detail,plan_nivcsws,bigint
+pg_stat_kcache_detail,exec_user_time,double precision
+pg_stat_kcache_detail,exec_system_time,double precision
+pg_stat_kcache_detail,exec_minflts,bigint
+pg_stat_kcache_detail,exec_majflts,bigint
+pg_stat_kcache_detail,exec_nswaps,bigint
+pg_stat_kcache_detail,exec_reads,bigint
+pg_stat_kcache_detail,exec_reads_blks,bigint
+pg_stat_kcache_detail,exec_writes,bigint
+pg_stat_kcache_detail,exec_writes_blks,bigint
+pg_stat_kcache_detail,exec_msgsnds,bigint
+pg_stat_kcache_detail,exec_msgrcvs,bigint
+pg_stat_kcache_detail,exec_nsignals,bigint
+pg_stat_kcache_detail,exec_nvcsws,bigint
+pg_stat_kcache_detail,exec_nivcsws,bigint
+pg_stat_statements,userid,oid
+pg_stat_statements,dbid,oid
+pg_stat_statements,toplevel,boolean
+pg_stat_statements,queryid,bigint
+pg_stat_statements,query,text
+pg_stat_statements,plans,bigint
+pg_stat_statements,total_plan_time,double precision
+pg_stat_statements,min_plan_time,double precision
+pg_stat_statements,max_plan_time,double precision
+pg_stat_statements,mean_plan_time,double precision
+pg_stat_statements,stddev_plan_time,double precision
+pg_stat_statements,calls,bigint
+pg_stat_statements,total_exec_time,double precision
+pg_stat_statements,min_exec_time,double precision
+pg_stat_statements,max_exec_time,double precision
+pg_stat_statements,mean_exec_time,double precision
+pg_stat_statements,stddev_exec_time,double precision
+pg_stat_statements,rows,bigint
+pg_stat_statements,shared_blks_hit,bigint
+pg_stat_statements,shared_blks_read,bigint
+pg_stat_statements,shared_blks_dirtied,bigint
+pg_stat_statements,shared_blks_written,bigint
+pg_stat_statements,local_blks_hit,bigint
+pg_stat_statements,local_blks_read,bigint
+pg_stat_statements,local_blks_dirtied,bigint
+pg_stat_statements,local_blks_written,bigint
+pg_stat_statements,temp_blks_read,bigint
+pg_stat_statements,temp_blks_written,bigint
+pg_stat_statements,blk_read_time,double precision
+pg_stat_statements,blk_write_time,double precision
+pg_stat_statements,wal_records,bigint
+pg_stat_statements,wal_fpi,bigint
+pg_stat_statements,wal_bytes,numeric
+pg_stat_statements_info,dealloc,bigint
+pg_stat_statements_info,stats_reset,timestamp with time zone
+spatial_ref_sys,srid,integer
+spatial_ref_sys,auth_name,character varying
+spatial_ref_sys,auth_srid,integer
+spatial_ref_sys,srtext,character varying
+spatial_ref_sys,proj4text,character varying
