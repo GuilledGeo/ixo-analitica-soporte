@@ -1,0 +1,67 @@
+# === ENTORNOS VIRTUALES ===
+.venv/
+env/
+ENV/
+venv/
+*.egg-info/
+
+# === PYTHON ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.log
+
+# === JUPYTER NOTEBOOKS ===
+.ipynb_checkpoints/
+
+# === DATOS Y RESULTADOS ===
+data/raw/
+data/processed/
+data/external/
+outputs/
+*.csv
+*.parquet
+*.feather
+*.h5
+*.zip
+
+# === CONFIG / SECRETS ===
+.env
+*.env
+secrets.yaml
+*.key
+*.pem
+
+# === SISTEMA / OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === VISUAL STUDIO CODE ===
+.vscode/
+
+# === KUBERNETES / DOCKER ===
+kubeconfig/
+*.kube
+docker-compose.override.yml
+
+# === TEST / COVERAGE ===
+htmlcov/
+.tox/
+.nox/
+.coverage
+.pytest_cache/
+cache/
+
+# === GIT ===
+*.orig
+
+# === STREAMLIT CACHE (si usas) ===
+.streamlit/
+
+# === OTROS ARCHIVOS TEMPORALES ===
+~$*
+*.bak
+*.swp
