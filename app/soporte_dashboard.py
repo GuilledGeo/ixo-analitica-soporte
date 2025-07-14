@@ -92,7 +92,7 @@ sin_gps = df[df["mensajes_sin_gps"] > 0].shape[0] if "mensajes_sin_gps" in df.co
 
 col1.metric("Total dispositivos", f"{total:,}")
 col2.metric("Conectados hoy", f"{conectados:,}", delta=f"{(conectados/total)*100:.1f}%" if total else "0%")
-col3.metric("Sin conexión 24h", f"{sin_conexion:,}", delta=f"{(sin_conexion/total)*100:.1f}%" if total else "0%")
+col3.metric("Sin conexión", f"{sin_conexion:,}", delta=f"{(sin_conexion/total)*100:.1f}%" if total else "0%")
 
 col4, col5, col6 = st.columns(3)
 
@@ -100,10 +100,10 @@ bateria_media = df["porcentaje_bateria"].mean() if "porcentaje_bateria" in df.co
 col4.metric("Batería media (%)", f"{bateria_media:.1f}%" if bateria_media else "N/A")
 
 if "pct_recibidos_vs_esperados" in df.columns and not df.empty:
-    bajos_ratio = df[df["pct_recibidos_vs_esperados"] < 0.5].shape[0]
-    col5.metric("Ratio < 50%", f"{bajos_ratio:,}", delta=f"{(bajos_ratio/total)*100:.1f}%" if total else "0%")
+    bajos_ratio = df[df["pct_recibidos_vs_esperados"] < 0.25].shape[0]
+    col5.metric("Ratio < 25%", f"{bajos_ratio:,}", delta=f"{(bajos_ratio/total)*100:.1f}%" if total else "0%")
 else:
-    col5.metric("Ratio < 50%", "N/A")
+    col5.metric("Ratio < 25%", "N/A")
 
 if "porcentaje_bateria" in df.columns and not df.empty:
     bajos_bateria = df[df["porcentaje_bateria"] < 20].shape[0]
