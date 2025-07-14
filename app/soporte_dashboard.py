@@ -56,7 +56,8 @@ orden_personalizado = [
     "Conexión 3-7 días",
     "Conexión 7-15 días",
     "Conexión 15 días - 1 mes",
-    "Conexión 1-3 meses"
+    "Conexión 1-3 meses",
+    "Conexión >3  meses"
 ]
 
 # Extraer únicos que existan en el DataFrame, respetando ese orden
