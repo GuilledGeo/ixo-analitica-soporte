@@ -61,6 +61,11 @@ if modelo != "Todos":
 if estado != "Todos":
     df = df[df["clasificacion_conexion"] == estado]
 
+# Ordenar por fecha de último mensaje, de más reciente a más antiguo
+if "ultimo_mensaje_recibido" in df.columns:
+    df["ultimo_mensaje_recibido"] = pd.to_datetime(df["ultimo_mensaje_recibido"], errors="coerce")
+    df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
+
 # === KPIs dinámicos ===
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
@@ -129,6 +134,12 @@ with tab1:
     df_filtrado = df.copy()
     if busqueda:
         df_filtrado = df[df.apply(lambda row: busqueda.lower() in str(row).lower(), axis=1)]
+
+    # Ordenar por fecha en la tabla también
+if "ultimo_mensaje_recibido" in df_filtrado.columns:
+    df_filtrado["ultimo_mensaje_recibido"] = pd.to_datetime(df_filtrado["ultimo_mensaje_recibido"], errors="coerce")
+    df_filtrado = df_filtrado.sort_values(by="ultimo_mensaje_recibido", ascending=False)
+
 
     if cliente == "Todos":
         st.markdown("#### 📋 Tabla de dispositivos (vista completa)")

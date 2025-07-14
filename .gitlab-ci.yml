@@ -1,0 +1,29 @@
+stages:
+  - install
+  - test
+
+variables:
+  VENV_PATH: ".venv"
+
+before_script:
+  - python -V
+  - pip install --upgrade pip
+  - python -m venv $VENV_PATH
+  - source $VENV_PATH/Scripts/activate  # En Windows runners; si usas Linux, cambia por: source $VENV_PATH/bin/activate
+  - pip install -r requirements.txt
+
+install_dependencies:
+  stage: install
+  script:
+    - echo "Dependencias instaladas"
+
+run_tests:
+  stage: test
+  script:
+    - pytest tests/ --disable-warnings
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - junit.xml
