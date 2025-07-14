@@ -48,7 +48,22 @@ st.markdown("### 🎛️ Filtros de visualización avanzados")
 colf1, colf2, colf3 = st.columns(3)
 cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
 modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
-estado = colf3.selectbox("Estado de conexión", ["Todos"] + sorted(df_original["clasificacion_conexion"].dropna().unique().tolist()), index=0)
+# Ordenar estado de conexión con lógica temporal
+orden_personalizado = [
+    "Conectado hoy",
+    "Conexión 24-48h",
+    "Conexión 48-72h",
+    "Conexión 3-7 días",
+    "Conexión 7-15 días",
+    "Conexión 15 días - 1 mes",
+    "Conexión 1-3 meses"
+]
+
+# Extraer únicos que existan en el DataFrame, respetando ese orden
+estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().tolist()
+estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
+
+estado = colf3.selectbox("Estado de conexión", ["Todos"] + estados_ordenados, index=0)
 
 # === Aplicar filtros ===
 df = df_original.copy()
