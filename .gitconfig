@@ -1,0 +1,25 @@
+[user]
+    name = Guillermo
+    email = guillermo@ixorigue.com
+
+[core]
+    editor = code --wait
+
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    ci = commit
+    lg = log --oneline --graph --all --decorate
+    pushboth = "!git push origin HEAD && git push gitlab HEAD"
+
+[remote "github"]
+    url = git@github.com/guilledgeo/ixo-dash-soporte.git
+    fetch = +refs/heads/*:refs/remotes/origin/*
+
+[remote "gitlab"]
+    url = git@gitlab.com/guillermo/analitica-soporte.git
+    fetch = +refs/heads/*:refs/remotes/gitlab/*
+
+
+#git pushboth

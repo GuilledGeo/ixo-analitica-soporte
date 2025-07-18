@@ -5,65 +5,98 @@ sys.path.append(os.path.abspath("."))
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import time
 from datetime import datetime
+
+from src.db.connection import conectar_db
+from scripts.consultas.consulta_01 import ejecutar
 from src.features.consulta_1 import aplicar_clasificaciones_temporales
 
-st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositivos")
+# === Configuración general ===
+st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte Ixorigué - Dispositivos")
 
-# === Cargar CSV más reciente ===
-CARPETA = "data/processed"
-PREFIJO = "consulta_01"
+# === Refresco automático cada 5 minutos ===
+REFRESH_INTERVAL = 300
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
+    st.session_state.last_refresh = time.time()
+    st.experimental_rerun()
 
-def encontrar_csv_reciente(prefijo, carpeta):
-    archivos = [f for f in os.listdir(carpeta) if f.startswith(prefijo) and f.endswith(".csv")]
-    if not archivos:
-        return None
-    archivos.sort(reverse=True)
-    return os.path.join(carpeta, archivos[0])
+# === Bandera para mostrar solo en primera carga
+if 'primera_carga' not in st.session_state:
+    st.session_state.primera_carga = True
 
-ruta_csv = encontrar_csv_reciente(PREFIJO, CARPETA)
+# === CONTENEDORES TEMPORALES ===
+placeholder_bienvenida = st.empty()
+placeholder_subtitulo = st.empty()
+placeholder_barra = st.empty()
+placeholder_footer = st.empty()
 
-# === Extraer fecha del CSV para título ===
-nombre_archivo = os.path.basename(ruta_csv)
-try:
-    partes = nombre_archivo.replace(".csv", "").split("_")
-    fecha = partes[2]
-    hora = partes[3].replace("-", ":")
-    fecha_hora_formateada = f"{fecha} {hora}"
-except Exception:
-    fecha_hora_formateada = "Fecha desconocida"
+# === Mostrar solo si es primera vez
+if st.session_state.primera_carga:
+    placeholder_bienvenida.title("📱 Bienvenido al Panel de Control de Soporte – Ixorigué")
+    placeholder_subtitulo.markdown("Los datos están siendo consultados en vivo desde la base de datos. Por favor, espera...")
+    placeholder_footer.markdown("<small>Desarrollado por Guillermo Durántez – Ixorigué</small>", unsafe_allow_html=True)
 
-st.title(f"📱Dashboard Soporte consulta últimas 24h: {fecha_hora_formateada}")
+with st.spinner("⏳ Conectando con la base de datos..."):
+    tiempo_inicio = time.time()
+    barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
-if ruta_csv:
-    df_original = pd.read_csv(ruta_csv)
-    st.success(f"✅ Datos cargados de: `{os.path.basename(ruta_csv)}`")
-else:
-    st.error("❌ No se encontró ningún archivo CSV procesado.")
-    st.stop()
+    @st.cache_data(ttl=300)
+    def cargar_datos():
+        engine = conectar_db()
+        df = ejecutar(engine)
+        return aplicar_clasificaciones_temporales(df)
 
-# === Filtros debajo de KPIs ===
+    df_original = None
+    while df_original is None:
+        try:
+            df_original = cargar_datos()
+        except Exception:
+            time.sleep(1)
+
+    tiempo_fin = time.time()
+    duracion_segundos = round(tiempo_fin - tiempo_inicio, 2)
+
+    for i in range(101):
+        barra_carga.progress(i, text=f"Cargando datos... {i}%")
+        time.sleep(duracion_segundos / 100)
+
+# === Limpiar contenido temporal solo tras primera carga
+placeholder_bienvenida.empty()
+placeholder_subtitulo.empty()
+placeholder_barra.empty()
+placeholder_footer.empty()
+st.session_state.primera_carga = False  # Ya no es primera vez
+
+# === Confirmación de actualización ===
+st.success(f"✅ Datos actualizados: {datetime.now().strftime('%d/%m/%Y %H:%M')} (⏱️ {duracion_segundos:.2f} segundos)")
+
+# === Advertencia si tarda demasiado
+if duracion_segundos >= 60:
+    st.warning(
+        "⚠️ Esta consulta ha tardado más de 1 minuto en completarse. "
+        "Esto puede deberse a latencia o problemas de conexión con la base de datos.\n\n"
+        "Si este problema persiste, contacta con Guillermo (guillermo@ixorigue.com)."
+    )
+
+# === Título principal (después de carga) ===
+st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({datetime.now().strftime('%d/%m/%Y %H:%M')})")
+
+# === Filtros ===
 st.markdown("### 🎛️ Filtros de visualización avanzados")
-
 colf1, colf2, colf3 = st.columns(3)
 cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
 modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
-# Ordenar estado de conexión con lógica temporal
-orden_personalizado = [
-    "Conectado hoy",
-    "Conexión 24-48h",
-    "Conexión 48-72h",
-    "Conexión 3-7 días",
-    "Conexión 7-15 días",
-    "Conexión 15 días - 1 mes",
-    "Conexión 1-3 meses",
-    "Conexión >3  meses"
-]
 
-# Extraer únicos que existan en el DataFrame, respetando ese orden
+orden_personalizado = [
+    "Conectado hoy", "Conexión 24-48h", "Conexión 48-72h",
+    "Conexión 3-7 días", "Conexión 7-15 días", "Conexión 15 días - 1 mes",
+    "Conexión 1-3 meses", "Conexión >3  meses"
+]
 estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().tolist()
 estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
-
 estado = colf3.selectbox("Estado de conexión", ["Todos"] + estados_ordenados, index=0)
 
 # === Aplicar filtros ===
@@ -77,12 +110,12 @@ if modelo != "Todos":
 if estado != "Todos":
     df = df[df["clasificacion_conexion"] == estado]
 
-# Ordenar por fecha de último mensaje, de más reciente a más antiguo
+# Ordenar por fecha
 if "ultimo_mensaje_recibido" in df.columns:
     df["ultimo_mensaje_recibido"] = pd.to_datetime(df["ultimo_mensaje_recibido"], errors="coerce")
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
-# === KPIs dinámicos ===
+# === KPIs ===
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
 
@@ -96,7 +129,6 @@ col2.metric("Conectados hoy", f"{conectados:,}", delta=f"{(conectados/total)*100
 col3.metric("Sin conexión", f"{sin_conexion:,}", delta=f"{(sin_conexion/total)*100:.1f}%" if total else "0%")
 
 col4, col5, col6 = st.columns(3)
-
 bateria_media = df["porcentaje_bateria"].mean() if "porcentaje_bateria" in df.columns and not df.empty else None
 col4.metric("Batería media (%)", f"{bateria_media:.1f}%" if bateria_media else "N/A")
 
@@ -111,6 +143,7 @@ if "porcentaje_bateria" in df.columns and not df.empty:
     col6.metric("Batería < 20%", f"{bajos_bateria:,}", delta=f"{(bajos_bateria/total)*100:.1f}%" if total else "0%")
 else:
     col6.metric("Batería < 20%", "N/A")
+
 
 # === Tabs ===
 tab1, tab2, tab3 = st.tabs([f"📊 Panel General – {filtro_titulo}", "📈 Análisis Avanzado", "⚙️ Control"])
@@ -240,3 +273,11 @@ if "ultimo_mensaje_recibido" in df_filtrado.columns:
                     st.info("No hay coordenadas disponibles para mostrar el mapa.")
             else:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; font-size: 0.9em; color: gray;'>"
+    "👨‍💻 Responsable del dashboard: Guillermo Durántez – "
+    "<a href='mailto:guillermo@ixorigue.com'>guillermo@ixorigue.com</a>"
+    "</div>",
+    unsafe_allow_html=True
+)
