@@ -15,17 +15,17 @@ from src.features.consulta_1 import aplicar_clasificaciones_temporales
 # === Configuración general ===
 st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte Ixorigué - Dispositivos")
 
-# === Refresco automático cada 5 minutos ===
+# === Refresco automático cada 5 minutos (solo si no es la primera carga)
 REFRESH_INTERVAL = 300
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
-if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
-    st.session_state.last_refresh = time.time()
-    st.experimental_rerun()
-
-# === Bandera para mostrar solo en primera carga
 if 'primera_carga' not in st.session_state:
     st.session_state.primera_carga = True
+else:
+    tiempo_desde_ultima = time.time() - st.session_state.last_refresh
+    if tiempo_desde_ultima > REFRESH_INTERVAL and not st.session_state.primera_carga:
+        st.session_state.last_refresh = time.time()
+        st.experimental_rerun()
 
 # === CONTENEDORES TEMPORALES ===
 placeholder_bienvenida = st.empty()
@@ -43,16 +43,18 @@ with st.spinner("⏳ Conectando con la base de datos..."):
     tiempo_inicio = time.time()
     barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
+    # Función cacheada separada de la conexión
     @st.cache_data(ttl=300)
-    def cargar_datos():
-        engine = conectar_db()
+    def ejecutar_y_clasificar(engine):
         df = ejecutar(engine)
         return aplicar_clasificaciones_temporales(df)
 
+    # Conexión explícita fuera del cache
+    engine = conectar_db()
     df_original = None
     while df_original is None:
         try:
-            df_original = cargar_datos()
+            df_original = ejecutar_y_clasificar(engine)
         except Exception:
             time.sleep(1)
 
@@ -80,6 +82,7 @@ if duracion_segundos >= 60:
         "Esto puede deberse a latencia o problemas de conexión con la base de datos.\n\n"
         "Si este problema persiste, contacta con Guillermo (guillermo@ixorigue.com)."
     )
+
 
 # === Título principal (después de carga) ===
 st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({datetime.now().strftime('%d/%m/%Y %H:%M')})")
