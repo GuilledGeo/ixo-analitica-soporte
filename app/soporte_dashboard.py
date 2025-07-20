@@ -43,20 +43,36 @@ with st.spinner("⏳ Conectando con la base de datos..."):
     tiempo_inicio = time.time()
     barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
-    # Función cacheada separada de la conexión
+# === Carga de datos con manejo de errores y control de intentos ===
+with st.spinner("⏳ Conectando con la base de datos..."):
+    tiempo_inicio = time.time()
+    barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
+
     @st.cache_data(ttl=300)
-    def ejecutar_y_clasificar(engine):
+    def cargar_datos():
+        engine = conectar_db()
         df = ejecutar(engine)
         return aplicar_clasificaciones_temporales(df)
 
-    # Conexión explícita fuera del cache
-    engine = conectar_db()
     df_original = None
-    while df_original is None:
+    max_intentos = 5
+    intentos = 0
+    excepcion = None
+
+    while intentos < max_intentos and df_original is None:
         try:
-            df_original = ejecutar_y_clasificar(engine)
-        except Exception:
-            time.sleep(1)
+            df_original = cargar_datos()
+        except Exception as e:
+            excepcion = e
+            print(f"❌ Error al cargar datos en intento {intentos + 1}: {e}")
+            time.sleep(2)
+            intentos += 1
+
+    if df_original is None:
+        st.error("❌ No se pudo cargar la información tras varios intentos.")
+        if excepcion:
+            st.exception(excepcion)
+        st.stop()
 
     tiempo_fin = time.time()
     duracion_segundos = round(tiempo_fin - tiempo_inicio, 2)
@@ -64,6 +80,7 @@ with st.spinner("⏳ Conectando con la base de datos..."):
     for i in range(101):
         barra_carga.progress(i, text=f"Cargando datos... {i}%")
         time.sleep(duracion_segundos / 100)
+
 
 # === Limpiar contenido temporal solo tras primera carga
 placeholder_bienvenida.empty()
