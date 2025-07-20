@@ -43,35 +43,35 @@ with st.spinner("⏳ Conectando con la base de datos..."):
     tiempo_inicio = time.time()
     barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
-# === Carga de datos con manejo de errores y control de intentos ===
+# === BLOQUE DE CARGA CON DEPURACIÓN ===
 with st.spinner("⏳ Conectando con la base de datos..."):
     tiempo_inicio = time.time()
     barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
     @st.cache_data(ttl=300)
     def cargar_datos():
+        st.write("🔌 Estableciendo conexión con la base de datos...")
         engine = conectar_db()
+        st.write("✅ Conexión establecida. Ejecutando consulta...")
         df = ejecutar(engine)
+        st.write("📊 Consulta ejecutada. Filas obtenidas:", len(df))
         return aplicar_clasificaciones_temporales(df)
 
     df_original = None
-    max_intentos = 5
     intentos = 0
-    excepcion = None
+    max_intentos = 3
 
-    while intentos < max_intentos and df_original is None:
+    while df_original is None and intentos < max_intentos:
         try:
             df_original = cargar_datos()
         except Exception as e:
-            excepcion = e
-            print(f"❌ Error al cargar datos en intento {intentos + 1}: {e}")
-            time.sleep(2)
+            st.warning(f"⚠️ Intento {intentos + 1} fallido: {e}")
+            print(f"❌ Error intento {intentos + 1}: {e}")
             intentos += 1
+            time.sleep(2)
 
     if df_original is None:
         st.error("❌ No se pudo cargar la información tras varios intentos.")
-        if excepcion:
-            st.exception(excepcion)
         st.stop()
 
     tiempo_fin = time.time()
