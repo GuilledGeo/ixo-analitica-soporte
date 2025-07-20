@@ -95,15 +95,14 @@ WHERE (
 )
 
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
-
-
 """
 
-# Función ejecutable desde main
-def ejecutar(conn):
+# Función ejecutable desde main o desde Streamlit
+def ejecutar(engine):
     nombre_script = inspect.getfile(inspect.currentframe()).split("/")[-1].replace(".py", "")
     try:
-        df = pd.read_sql_query(query, conn)  # conn es ahora un engine SQLAlchemy
+        with engine.connect() as connection:
+            df = pd.read_sql_query(query, connection)
         print(f"✅ Consulta {nombre_script} ejecutada correctamente.")
         return df
     except Exception as e:
