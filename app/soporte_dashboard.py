@@ -7,9 +7,8 @@ import pandas as pd
 import plotly.express as px
 import time
 from datetime import datetime
+import requests
 
-from src.db.connection import conectar_db
-from scripts.consultas.consulta_01 import ejecutar
 from src.features.consulta_1 import aplicar_clasificaciones_temporales
 
 # === Configuración general ===
@@ -36,26 +35,25 @@ placeholder_footer = st.empty()
 # === Mostrar solo si es primera vez
 if st.session_state.primera_carga:
     placeholder_bienvenida.title("📱 Bienvenido al Panel de Control de Soporte – Ixorigué")
-    placeholder_subtitulo.markdown("Los datos están siendo consultados en vivo desde la base de datos. Por favor, espera...")
+    placeholder_subtitulo.markdown("Los datos están siendo consultados desde la API en vivo. Por favor, espera...")
     placeholder_footer.markdown("<small>Desarrollado por Guillermo Durántez – Ixorigué</small>", unsafe_allow_html=True)
 
-with st.spinner("⏳ Conectando con la base de datos..."):
-    tiempo_inicio = time.time()
-    barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
-
 # === BLOQUE DE CARGA CON DEPURACIÓN ===
-with st.spinner("⏳ Conectando con la base de datos..."):
+with st.spinner("⏳ Solicitando datos a la API..."):
     tiempo_inicio = time.time()
     barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
 
     @st.cache_data(ttl=300)
     def cargar_datos():
-        st.write("🔌 Estableciendo conexión con la base de datos...")
-        engine = conectar_db()
-        st.write("✅ Conexión establecida. Ejecutando consulta...")
-        df = ejecutar(engine)
-        st.write("📊 Consulta ejecutada. Filas obtenidas:", len(df))
-        return aplicar_clasificaciones_temporales(df)
+        url = "https://ixo-dash-soporte.onrender.com/consulta_01"
+        st.write(f"🔗 Consultando datos desde: {url}")
+        response = requests.get(url)
+        if response.status_code == 200:
+            df = pd.DataFrame(response.json())
+            st.write("📊 Datos recibidos correctamente. Filas obtenidas:", len(df))
+            return aplicar_clasificaciones_temporales(df)
+        else:
+            raise ValueError(f"❌ Error en la API ({response.status_code}): {response.text}")
 
     df_original = None
     intentos = 0
@@ -81,7 +79,6 @@ with st.spinner("⏳ Conectando con la base de datos..."):
         barra_carga.progress(i, text=f"Cargando datos... {i}%")
         time.sleep(duracion_segundos / 100)
 
-
 # === Limpiar contenido temporal solo tras primera carga
 placeholder_bienvenida.empty()
 placeholder_subtitulo.empty()
@@ -96,7 +93,7 @@ st.success(f"✅ Datos actualizados: {datetime.now().strftime('%d/%m/%Y %H:%M')}
 if duracion_segundos >= 60:
     st.warning(
         "⚠️ Esta consulta ha tardado más de 1 minuto en completarse. "
-        "Esto puede deberse a latencia o problemas de conexión con la base de datos.\n\n"
+        "Esto puede deberse a latencia o problemas de conexión con la API.\n\n"
         "Si este problema persiste, contacta con Guillermo (guillermo@ixorigue.com)."
     )
 
