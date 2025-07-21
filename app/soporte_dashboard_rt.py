@@ -2,58 +2,115 @@ import sys
 import os
 sys.path.append(os.path.abspath("."))
 
-import folium
-from streamlit_folium import st_folium
-from folium.plugins import MarkerCluster
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import time
 from datetime import datetime
+import requests
+
 from src.features.consulta_1 import aplicar_clasificaciones_temporales
 
-st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositivos")
+# === Configuración general ===
+st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte Ixorigué - Dispositivos")
 
-# === Cargar CSV más reciente ===
-CARPETA = "data/processed"
-PREFIJO = "consulta_01"
-
-def encontrar_csv_reciente(prefijo, carpeta):
-    archivos = [f for f in os.listdir(carpeta) if f.startswith(prefijo) and f.endswith(".csv")]
-    if not archivos:
-        return None
-    archivos.sort(reverse=True)
-    return os.path.join(carpeta, archivos[0])
-
-ruta_csv = encontrar_csv_reciente(PREFIJO, CARPETA)
-
-if ruta_csv:
-    nombre_archivo = os.path.basename(ruta_csv)
-    try:
-        partes = nombre_archivo.replace(".csv", "").split("_")
-        fecha = partes[2]
-        hora = partes[3].replace("-", ":")
-        fecha_hora_formateada = f"{fecha} {hora}"
-    except Exception:
-        fecha_hora_formateada = "Fecha desconocida"
-
-    st.title(f"📱Dashboard Soporte consulta últimas 24h: {fecha_hora_formateada}")
-    df_original = pd.read_csv(ruta_csv)
-    st.success(f"✅ Datos cargados de: `{nombre_archivo}`")
+# === Refresco automático cada 5 minutos (solo si no es la primera carga)
+REFRESH_INTERVAL = 300
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+if 'primera_carga' not in st.session_state:
+    st.session_state.primera_carga = True
 else:
-    st.error("❌ No se encontró ningún archivo CSV procesado.")
-    st.stop()
+    tiempo_desde_ultima = time.time() - st.session_state.last_refresh
+    if tiempo_desde_ultima > REFRESH_INTERVAL and not st.session_state.primera_carga:
+        st.session_state.last_refresh = time.time()
+        st.experimental_rerun()
+
+# === CONTENEDORES TEMPORALES ===
+placeholder_bienvenida = st.empty()
+placeholder_subtitulo = st.empty()
+placeholder_barra = st.empty()
+placeholder_footer = st.empty()
+
+# === Mostrar solo si es primera vez
+if st.session_state.primera_carga:
+    placeholder_bienvenida.title("📱 Bienvenido al Panel de Control de Soporte – Ixorigué")
+    placeholder_subtitulo.markdown("Los datos están siendo consultados desde la API en vivo. Por favor, espera...")
+    placeholder_footer.markdown("<small>Desarrollado por Guillermo Durántez – Ixorigué</small>", unsafe_allow_html=True)
+
+# === BLOQUE DE CARGA CON DEPURACIÓN ===
+with st.spinner("⏳ Solicitando datos a la API..."):
+    tiempo_inicio = time.time()
+    barra_carga = placeholder_barra.progress(0, text="Cargando datos...")
+
+    @st.cache_data(ttl=300)
+    def cargar_datos():
+        url = "https://ixo-dash-soporte.onrender.com/consulta_01"
+        st.write(f"🔗 Consultando datos desde: {url}")
+        response = requests.get(url)
+        if response.status_code == 200:
+            df = pd.DataFrame(response.json())
+            st.write("📊 Datos recibidos correctamente. Filas obtenidas:", len(df))
+            return aplicar_clasificaciones_temporales(df)
+        else:
+            raise ValueError(f"❌ Error en la API ({response.status_code}): {response.text}")
+
+    df_original = None
+    intentos = 0
+    max_intentos = 3
+
+    while df_original is None and intentos < max_intentos:
+        try:
+            df_original = cargar_datos()
+        except Exception as e:
+            st.warning(f"⚠️ Intento {intentos + 1} fallido: {e}")
+            print(f"❌ Error intento {intentos + 1}: {e}")
+            intentos += 1
+            time.sleep(2)
+
+    if df_original is None:
+        st.error("❌ No se pudo cargar la información tras varios intentos.")
+        st.stop()
+
+    tiempo_fin = time.time()
+    duracion_segundos = round(tiempo_fin - tiempo_inicio, 2)
+
+    for i in range(101):
+        barra_carga.progress(i, text=f"Cargando datos... {i}%")
+        time.sleep(duracion_segundos / 100)
+
+# === Limpiar contenido temporal solo tras primera carga
+placeholder_bienvenida.empty()
+placeholder_subtitulo.empty()
+placeholder_barra.empty()
+placeholder_footer.empty()
+st.session_state.primera_carga = False  # Ya no es primera vez
+
+# === Confirmación de actualización ===
+st.success(f"✅ Datos actualizados: {datetime.now().strftime('%d/%m/%Y %H:%M')} (⏱️ {duracion_segundos:.2f} segundos)")
+
+# === Advertencia si tarda demasiado
+if duracion_segundos >= 60:
+    st.warning(
+        "⚠️ Esta consulta ha tardado más de 1 minuto en completarse. "
+        "Esto puede deberse a latencia o problemas de conexión con la API.\n\n"
+        "Si este problema persiste, contacta con Guillermo (guillermo@ixorigue.com)."
+    )
+
+
+# === Título principal (después de carga) ===
+st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({datetime.now().strftime('%d/%m/%Y %H:%M')})")
 
 # === Filtros ===
 st.markdown("### 🎛️ Filtros de visualización avanzados")
 colf1, colf2, colf3 = st.columns(3)
-
 cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
 modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
 
 orden_personalizado = [
     "Conectado hoy", "Conexión 24-48h", "Conexión 48-72h",
-    "Conexión 3-7 días", "Conexión 7-15 días",
-    "Conexión 15 días - 1 mes", "Conexión 1-3 meses", "Conexión >3  meses"
+    "Conexión 3-7 días", "Conexión 7-15 días", "Conexión 15 días - 1 mes",
+    "Conexión 1-3 meses", "Conexión >3  meses"
 ]
 estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().tolist()
 estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
@@ -104,9 +161,11 @@ if "porcentaje_bateria" in df.columns and not df.empty:
 else:
     col6.metric("Batería < 20%", "N/A")
 
+
 # === Tabs ===
 tab1, tab2, tab3 = st.tabs([f"📊 Panel General – {filtro_titulo}", "📈 Análisis Avanzado", "⚙️ Control"])
 
+# === TAB 1 ===
 with tab1:
     st.subheader(f"📊 Panel de Control – {filtro_titulo}")
 
@@ -119,16 +178,19 @@ with tab1:
         if "ranch_name" in df.columns:
             df_ranch = df.groupby("ranch_name")["device_id"].nunique().reset_index()
             df_ranch.columns = ["Ganadería", "Nº Dispositivos"]
-            fig = px.bar(df_ranch, x="Ganadería", y="Nº Dispositivos", title=f"Dispositivos por Ganadería – {filtro_titulo}", text_auto=True)
+            fig = px.bar(df_ranch, x="Ganadería", y="Nº Dispositivos",
+                         title=f"Dispositivos por Ganadería – {filtro_titulo}", text_auto=True)
             st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         if "pct_recibidos_vs_esperados" in df.columns:
-            fig = px.histogram(df, x="pct_recibidos_vs_esperados", nbins=20, title="Ratio de Mensajes Recibidos (%)")
+            fig = px.histogram(df, x="pct_recibidos_vs_esperados", nbins=20,
+                               title="Ratio de Mensajes Recibidos (%)")
             st.plotly_chart(fig, use_container_width=True)
 
         if "porcentaje_bateria" in df.columns:
-            fig = px.histogram(df, x="porcentaje_bateria", nbins=20, title="Distribución de Batería (%)")
+            fig = px.histogram(df, x="porcentaje_bateria", nbins=20,
+                               title="Distribución de Batería (%)")
             st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -139,9 +201,11 @@ with tab1:
     if busqueda:
         df_filtrado = df[df.apply(lambda row: busqueda.lower() in str(row).lower(), axis=1)]
 
-    if "ultimo_mensaje_recibido" in df_filtrado.columns:
-        df_filtrado["ultimo_mensaje_recibido"] = pd.to_datetime(df_filtrado["ultimo_mensaje_recibido"], errors="coerce")
-        df_filtrado = df_filtrado.sort_values(by="ultimo_mensaje_recibido", ascending=False)
+    # Ordenar por fecha en la tabla también
+if "ultimo_mensaje_recibido" in df_filtrado.columns:
+    df_filtrado["ultimo_mensaje_recibido"] = pd.to_datetime(df_filtrado["ultimo_mensaje_recibido"], errors="coerce")
+    df_filtrado = df_filtrado.sort_values(by="ultimo_mensaje_recibido", ascending=False)
+
 
     if cliente == "Todos":
         st.markdown("#### 📋 Tabla de dispositivos (vista completa)")
@@ -172,9 +236,15 @@ with tab1:
 
         with col2:
             st.markdown("#### 🗺️ Mapa última posición GPS")
+            import folium
+            from streamlit_folium import st_folium
+            from folium.plugins import MarkerCluster
+
             if "lat" in df.columns and "lon" in df.columns:
                 df_coords = df_filtrado.dropna(subset=["lat", "lon"]).copy()
+
                 if not df_coords.empty:
+                    # Zoom inteligente según número de dispositivos
                     if len(df_coords) == 1:
                         zoom_location = [df_coords.iloc[0]["lat"], df_coords.iloc[0]["lon"]]
                         zoom_level = 14
@@ -186,6 +256,8 @@ with tab1:
                         zoom_level = 8
 
                     m = folium.Map(location=zoom_location, zoom_start=zoom_level, tiles="OpenStreetMap")
+
+                    # Fondo tipo satélite estilo Google Earth (World Imagery)
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                         attr="Esri",
@@ -194,16 +266,23 @@ with tab1:
                         control=True
                     ).add_to(m)
 
+                    # Nota: no añadimos el MarkerCluster como capa controlable (no se podrá ocultar)
+
+
                     cluster = MarkerCluster().add_to(m)
+
                     for _, row in df_coords.iterrows():
                         popup = f"""
-                        <b>Nº Serie:</b> {row.get('SerialNumber', 'N/A')}<br>
+                        <b>Nº Serie:</b> {row['SerialNumber']}<br>
                         <b>Cliente:</b> {row.get('customer_name', 'N/A')}<br>
                         <b>Ultima posición GPS:</b> {row.get('ultima_posicion_gps_valida', 'N/A')}<br>
                         <b>Estado conexión:</b> {row.get('clasificacion_conexion', 'N/A')}<br>
                         <b>Último mensaje:</b> {row.get('ultimo_mensaje_recibido', 'N/A')}
                         """
-                        folium.Marker(location=[row["lat"], row["lon"]], popup=popup).add_to(cluster)
+                        folium.Marker(
+                            location=[row["lat"], row["lon"]],
+                            popup=popup
+                        ).add_to(cluster)
 
                     folium.LayerControl(position="topright", collapsed=False).add_to(m)
                     st_folium(m, width=600, height=600)
@@ -211,7 +290,6 @@ with tab1:
                     st.info("No hay coordenadas disponibles para mostrar el mapa.")
             else:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
-
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; font-size: 0.9em; color: gray;'>"
