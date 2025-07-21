@@ -31,9 +31,8 @@ def probar_conexion():
     print("🔗 Probando conexión a la base de datos...")
     try:
         engine = conectar_db()
-        conn = engine.connect()
         print("✅ Conexión exitosa.")
-        return conn
+        return engine  # 🔁 devolvemos el engine directamente
     except Exception as e:
         print("❌ Error al conectar:", e)
         return None
@@ -55,18 +54,15 @@ def aplicar_features_dinamicamente(df):
     print(f"✅ Se aplicaron {len(aplicadas)} funciones de features.")
     return df
 
-def ejecutar_consulta(nombre_consulta, conn):
+def ejecutar_consulta(nombre_consulta, engine):
     print(f"\n🚀 Ejecutando consulta: {nombre_consulta}")
     try:
-        # Cargar módulo de consulta
         modulo = importlib.import_module(f"scripts.consultas.{nombre_consulta}")
-        df = modulo.ejecutar(conn)
+        df = modulo.ejecutar(engine)
 
-        # Aplicar features automáticamente si es consulta_01
         if nombre_consulta == "consulta_01":
             df = aplicar_features_dinamicamente(df)
 
-        # Guardar resultado
         os.makedirs("data/processed", exist_ok=True)
         ruta_salida = generar_nombre_versionado(nombre_consulta)
         df.to_csv(ruta_salida, index=False)
@@ -78,21 +74,18 @@ def ejecutar_consulta(nombre_consulta, conn):
         return False
 
 def main():
-    conn = probar_conexion()
-    if conn:
+    engine = probar_conexion()
+    if engine:
         exitosas = []
         fallidas = []
 
         for consulta in CONSULTAS:
-            resultado = ejecutar_consulta(consulta, conn)
+            resultado = ejecutar_consulta(consulta, engine)
             if resultado:
                 exitosas.append(consulta)
             else:
                 fallidas.append(consulta)
 
-        conn.close()
-
-        # 🔚 Resumen
         print("\n📊 RESUMEN FINAL:")
         print(f"✅ Consultas exitosas: {len(exitosas)}/{len(CONSULTAS)}")
         if exitosas:

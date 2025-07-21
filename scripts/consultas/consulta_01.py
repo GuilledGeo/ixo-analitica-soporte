@@ -95,6 +95,8 @@ WHERE (
 )
 
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
+
+
 """
 
 # Función ejecutable desde main o desde Streamlit
