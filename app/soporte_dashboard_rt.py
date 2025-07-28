@@ -6,7 +6,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+
 import requests
 
 from src.features.consulta_1 import aplicar_clasificaciones_temporales
@@ -99,7 +100,8 @@ if duracion_segundos >= 60:
 
 
 # === Título principal (después de carga) ===
-st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({datetime.now().strftime('%d/%m/%Y %H:%M')})")
+
+st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({(datetime.now() + timedelta(hours=2)).strftime('%d/%m/%Y %H:%M')})")
 
 # === Filtros ===
 st.markdown("### 🎛️ Filtros de visualización avanzados")
