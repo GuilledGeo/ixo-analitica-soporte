@@ -4,7 +4,7 @@ from sqlalchemy.engine import URL
 
 # Configuración de la base de datos (funcional)
 DB_CONFIG = {
-    "host": "88.99.66.93",
+    "host": "10.0.1.6",
     "port": 31702,
     "dbname": "ixorigue",
     "user": "ixorigue_reader",

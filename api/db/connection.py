@@ -2,14 +2,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
 DB_CONFIG = {
-    "host": "88.99.66.93",
+    "host": "10.0.1.6",
     "port": 31702,
     "dbname": "ixorigue",
     "user": "ixorigue_reader",
     "password": "4MDY7vqopVHjIcOk01ulJP75lBt9MsFEkRJiHq1DCSqsal9rQm",
     "sslmode": "require"
 }
-
+#88.99.66.93
 def get_engine():
     url = URL.create(
         drivername="postgresql+psycopg2",
