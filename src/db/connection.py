@@ -4,14 +4,14 @@ from sqlalchemy.engine import URL
 
 # Configuración de la base de datos (funcional)
 DB_CONFIG = {
-    "host": "91.99.186.170",
+    "host": "88.99.66.93",
     "port": 31702,
     "dbname": "ixorigue",
     "user": "ixorigue_reader",
     "password": "4MDY7vqopVHjIcOk01ulJP75lBt9MsFEkRJiHq1DCSqsal9rQm",
     "sslmode": "require" 
 }
-
+#91.99.186.170
 def conectar_db():
     try:
         url = URL.create(

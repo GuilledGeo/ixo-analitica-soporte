@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
 DB_CONFIG = {
-    "host": "91.99.186.170",
+    "host": "88.99.66.93",
     "port": 31702,
     "dbname": "ixorigue",
     "user": "ixorigue_reader",
