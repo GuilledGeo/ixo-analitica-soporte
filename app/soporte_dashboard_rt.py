@@ -153,13 +153,13 @@ bateria_media = df["porcentaje_bateria"].mean() if "porcentaje_bateria" in df.co
 col4.metric("Batería media (%)", f"{bateria_media:.1f}%" if bateria_media else "N/A")
 
 if "pct_recibidos_vs_esperados" in df.columns and not df.empty:
-    bajos_ratio = df[df["pct_recibidos_vs_esperados"] < 0.25].shape[0]
+    bajos_ratio = df[(df["pct_recibidos_vs_esperados"] > 0) & (df["pct_recibidos_vs_esperados"] < 0.25)].shape[0]
     col5.metric("Ratio < 25%", f"{bajos_ratio:,}", delta=f"{(bajos_ratio/total)*100:.1f}%" if total else "0%")
 else:
     col5.metric("Ratio < 25%", "N/A")
 
 if "porcentaje_bateria" in df.columns and not df.empty:
-    bajos_bateria = df[df["porcentaje_bateria"] < 20].shape[0]
+    bajos_bateria = df[(df["porcentaje_bateria"] > 0) & (df["porcentaje_bateria"] < 20)].shape[0]
     col6.metric("Batería < 20%", f"{bajos_bateria:,}", delta=f"{(bajos_bateria/total)*100:.1f}%" if total else "0%")
 else:
     col6.metric("Batería < 20%", "N/A")
