@@ -95,8 +95,6 @@ WHERE (
 )
 
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
-
-
 """
 
 # Función ejecutable desde main o desde Streamlit
@@ -105,6 +103,7 @@ def ejecutar(engine):
     try:
         with engine.connect() as connection:
             df = pd.read_sql_query(query, connection)
+        df = df.fillna(0)  # <- solución al problema de NaN → JSON
         print(f"✅ Consulta {nombre_script} ejecutada correctamente.")
         return df
     except Exception as e:

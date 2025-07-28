@@ -11,9 +11,9 @@ def obtener_resultados():
         engine = get_engine()
         df = ejecutar(engine)
 
-        # Convertir NaN/inf a None para que sea JSON serializable
-        df = df.replace({pd.NA: None, pd.NaT: None})
-        df = df.fillna(value=None)
+        # Seguridad extra por si quedaron NaN, inf o tipos no JSON-compatibles
+        df = df.replace([float('inf'), float('-inf')], 0)
+        df = df.where(pd.notnull(df), None)  # convierte NaN/NaT a None
 
         return df.to_dict(orient="records")
 
