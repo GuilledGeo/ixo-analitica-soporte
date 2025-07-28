@@ -11,11 +11,12 @@ app = FastAPI(
 # Middleware CORS para permitir llamadas desde Streamlit u otras apps externas
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Puedes reemplazar "*" por ["https://tuapp.streamlit.app"]
+    allow_origins=["https://ixo-dash-soporte-rt.streamlit.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Ruta raíz de bienvenida o test
 @app.get("/")
