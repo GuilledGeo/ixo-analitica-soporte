@@ -104,7 +104,10 @@ st.title(f"📡 Dashboard Soporte Ixorigue – Consulta 24h ({datetime.now().str
 # === Filtros ===
 st.markdown("### 🎛️ Filtros de visualización avanzados")
 colf1, colf2, colf3 = st.columns(3)
-cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
+# Asegurarse de que todos los valores sean cadenas válidas
+clientes_unicos = df_original["customer_name"].dropna().astype(str).unique().tolist()
+clientes_ordenados = sorted(clientes_unicos)
+cliente = colf1.selectbox("Cliente", ["Todos"] + clientes_ordenados, index=0)
 modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
 
 orden_personalizado = [
