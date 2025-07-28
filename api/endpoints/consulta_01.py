@@ -7,6 +7,9 @@ router = APIRouter()
 
 @router.get("/consulta_01")
 def obtener_resultados():
-    engine = get_engine()
-    df = ejecutar(engine)
-    return df.to_dict(orient="records")
+    try:
+        engine = get_engine()
+        df = ejecutar(engine)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        return {"error": str(e)}
