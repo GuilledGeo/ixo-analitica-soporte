@@ -205,4 +205,13 @@ python -m venv C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales
 
 # (4) Instalar dependencias
 pip install -r requirements.txt
+
+#(5) Actualizar dash
+git add -f data/processed/consulta_01_2025-07-28_09-00_v01.csv
+
+git commit -m "Actualización CSV para dash diario soporte"
+
+git push github main
+
+
 ```
