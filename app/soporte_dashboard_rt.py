@@ -47,11 +47,13 @@ with st.spinner("⏳ Solicitando datos a la API..."):
     @st.cache_data(ttl=300)
     def cargar_datos():
         url = "https://ixo-dash-soporte.onrender.com/consulta_01"
-        st.write(f"🔗 Consultando datos desde: {url}")
+        if st.session_state.primera_carga:
+            st.write(f"🔗 Consultando datos desde: {url}")
         response = requests.get(url)
         if response.status_code == 200:
             df = pd.DataFrame(response.json())
-            st.write("📊 Datos recibidos correctamente. Filas obtenidas:", len(df))
+            if st.session_state.primera_carga:
+                st.write("📊 Datos recibidos correctamente. Filas obtenidas:", len(df))
             return aplicar_clasificaciones_temporales(df)
         else:
             raise ValueError(f"❌ Error en la API ({response.status_code}): {response.text}")
@@ -80,12 +82,20 @@ with st.spinner("⏳ Solicitando datos a la API..."):
         barra_carga.progress(i, text=f"Cargando datos... {i}%")
         time.sleep(duracion_segundos / 100)
 
+# === Confirmación de actualización (solo visible en primera carga)
+if st.session_state.primera_carga:
+    from datetime import timedelta
+    st.success(f"✅ Datos actualizados: {(datetime.now() + timedelta(hours=2)).strftime('%d/%m/%Y %H:%M')} "
+               f"(🕐 {duracion_segundos:.2f} segundos)")
+
 # === Limpiar contenido temporal solo tras primera carga
 placeholder_bienvenida.empty()
 placeholder_subtitulo.empty()
 placeholder_barra.empty()
 placeholder_footer.empty()
+
 st.session_state.primera_carga = False  # Ya no es primera vez
+
 
 # === Confirmación de actualización ===
 st.success(f"✅ Datos actualizados: {datetime.now().strftime('%d/%m/%Y %H:%M')} (⏱️ {duracion_segundos:.2f} segundos)")
