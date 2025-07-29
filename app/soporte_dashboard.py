@@ -38,6 +38,7 @@ if ruta_csv:
 
     st.title(f"📱Dashboard Soporte consulta últimas 24h: {fecha_hora_formateada}")
     df_original = pd.read_csv(ruta_csv)
+    df_original = aplicar_clasificaciones_temporales(df_original)
     st.success(f"✅ Datos cargados de: `{nombre_archivo}`")
 else:
     st.error("❌ No se encontró ningún archivo CSV procesado.")
