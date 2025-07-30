@@ -223,8 +223,7 @@ git push gitlab main
 
 
 #(6) comando pushboth:
-git config --global alias.pushboth "!git push gitlab main && git push github main"
-
+git config --global alias.pushboth "!git push github main && git push gitlab main" 
 git pushboth
 
 #(7) comando pull:
