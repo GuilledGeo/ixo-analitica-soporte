@@ -167,7 +167,11 @@ C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\python.exe
 1. Pulsa `Ctrl+Shift+P` → escribe `Python: Select Interpreter`
 2. Si no aparece el entorno, selecciona manualmente:
 ```
+#portatil
 C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\python.exe
+#torre
+E:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\python.exe
+
 ```
 
 3. Verifica en la parte inferior izquierda que esté activo (`Python 3.10.x (env_statsgenerales)`)
