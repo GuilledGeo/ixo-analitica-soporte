@@ -145,7 +145,7 @@ Si al ejecutar el proyecto en VS Code (o en notebooks interactivos) aparece que 
 1. Asegúrate de que el entorno virtual está correctamente activado en PowerShell:
 
 ```powershell
-& "C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\Activate.ps1"
+& "C:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\Activate.ps1"
 ```
 
 2. Comprueba que `python` apunta al entorno y no al global:
@@ -167,11 +167,7 @@ C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\python.exe
 1. Pulsa `Ctrl+Shift+P` → escribe `Python: Select Interpreter`
 2. Si no aparece el entorno, selecciona manualmente:
 ```
-#portatil
 C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\python.exe
-#torre
-E:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\python.exe
-
 ```
 
 3. Verifica en la parte inferior izquierda que esté activo (`Python 3.10.x (env_statsgenerales)`)
@@ -205,11 +201,14 @@ Remove-Item -Recurse -Force C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales
 python -m venv C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales
 
 # (3) Activar en portatil
-& "C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\Activate.ps1"
+& "C:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\Activate.ps1"
 
 # (3) Activar en torre
 & "E:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\Activate.ps1"
 
+#(3) Activar entornos git (solo si no está activado)
+git remote add github git@github.com:GuilledGeo/ixo-analitica-soporte.git
+git remote add gitlab git@git.ixorigue.com:ixorigue/analytics/ixo-analitica-soporte.git
 
 # (4) Instalar dependencias
 pip install -r requirements.txt
@@ -220,6 +219,19 @@ git add -f data/processed/consulta_01_2025-07-28_09-00_v01.csv
 git commit -m "Actualización CSV para dash diario soporte"
 
 git push github main
+git push gitlab main 
+
+
+#(6) comando pushboth:
+git config --global alias.pushboth "!git push gitlab main && git push github main"
+
+git pushboth
+
+#(7) comando pull:
+Siempre guardar con push cuando se termine de trabajar con un pc, para empezar siempre con 
+
+git pull gitlab main
+git pull github main
 
 
 ```
