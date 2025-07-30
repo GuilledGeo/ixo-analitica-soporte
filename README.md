@@ -200,8 +200,12 @@ Remove-Item -Recurse -Force C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales
 # (2) Crear entorno nuevo
 python -m venv C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales
 
-# (3) Activar
+# (3) Activar en portatil
 & "C:\1_IXORIGUE\1_Proyectos\1_envs\env_statsgenerales\Scripts\Activate.ps1"
+
+# (3) Activar en torre
+& "E:\1_IXORIGUE\1_Proyectos\0_envs\env_statsgenerales\Scripts\Activate.ps1"
+
 
 # (4) Instalar dependencias
 pip install -r requirements.txt
