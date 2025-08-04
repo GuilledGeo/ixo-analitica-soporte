@@ -218,34 +218,5 @@ git add -f data/processed/consulta_01_2025-07-28_09-00_v01.csv
 
 git commit -m "Actualización CSV para dash diario soporte"
 
-git push github main
-<<<<<<< HEAD
-git push gitlab main 
-
-
-#(6) comando pushboth:
-git config --global alias.pushboth "!git push github main && git push gitlab main" 
-git pushboth
-
-#(7) comando pull:
-Siempre guardar con push cuando se termine de trabajar con un pc, para empezar siempre con 
-
-git pull gitlab main
-git pull github main
-=======
-git pull github main
-
-comando para pushear ambos: git pushall
-
-script:
-git config --global alias.pushall '!git push gitlab main && git push github main'
-
-
-para hacer pull dentro del editor:
-:q! + Enter = salir sin guardar.
-
-:wq + Enter = salir guardando.
->>>>>>> afc878d (Guardando cambios antes de rebase)
-
 
 ```
