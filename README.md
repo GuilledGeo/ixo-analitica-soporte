@@ -214,9 +214,8 @@ git remote add gitlab git@git.ixorigue.com:ixorigue/analytics/ixo-analitica-sopo
 pip install -r requirements.txt
 
 #(5) Actualizar dash
-git add -f data/processed/consulta_01_2025-07-28_09-00_v01.csv
+git add -f data/processed/consulta_01_2025-08-05_10-01_v01.csv
 
-git commit -m "Actualización CSV para dash diario soporte"
 
 
 ```
