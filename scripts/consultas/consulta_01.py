@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 CONSULTA DT01 – KPI de Disponibilidad GPS por Dispositivo (últimas 24h)
-Incluye métricas detalladas y condicionante de ganadería:
+Con filtro severo: Animal activo + Device shipped (RIGHT JOIN sobre Animals)
+
+Incluye:
 - "Posición válida vs esperadas (%)"
 - "Dispositivo OK (>60% válidas vs esperadas)"
 - "% dispositivos OK en ganadería"
 - "Ganadería OK (>70% dispositivos OK)"
+- Campos de Ranches: Country, Region
 
-Notas de ejecución:
+Notas:
 - Usa SQLAlchemy 2.x + pandas → envolver SIEMPRE la SQL con sqlalchemy.text(query)
 - Fija la zona horaria de sesión para evitar desfases con pgAdmin
 - Rellena NaN solo en columnas numéricas (no tocar fechas/bools/strings)
@@ -30,14 +33,33 @@ WITH active_devices AS (
     AND "Disabled" = FALSE
     AND "StatusType" = 'shipped'
 ),
+-- Animales activos (1 nombre por DeviceId). Si tienes UpdatedAt, puedes reemplazar por DISTINCT ON.
+current_animals AS (
+  SELECT
+    "DeviceId",
+    MAX("Name") AS animal_name
+  FROM "Animals"
+  WHERE "IsDeregistered" = FALSE
+  GROUP BY "DeviceId"
+),
+-- BASE: conduce Animals (RIGHT JOIN explícito) + exige device shipped
+base AS (
+  SELECT
+    d.*,
+    ca.animal_name
+  FROM active_devices d
+  RIGHT JOIN current_animals ca
+    ON ca."DeviceId" = d."Id"
+  WHERE d."Id" IS NOT NULL  -- garantiza que el device existe y está 'shipped'
+),
 
--- Métricas simples 24h (tu CTE original)
+-- Métricas simples 24h (idénticas a tu CTE original, pero desde BASE)
 gps_stats_24h_all AS (
   SELECT
     d."Id" AS device_id,
     COUNT(dl."Time") AS total_mensajes_24h,
     COUNT(dl."Time") FILTER (WHERE NOT dl."HasLocation") AS mensajes_sin_gps_24h
-  FROM active_devices d
+  FROM base d
   LEFT JOIN "DeviceLocations" dl
     ON dl."DeviceId" = d."Id"
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
@@ -67,25 +89,25 @@ gps_stats_full AS (
   GROUP BY dl."DeviceId"
 ),
 
--- Métricas detalladas 24h (denominadores exactos de tu definición)
+-- Métricas detalladas 24h (mismos denominadores)
 gps_stats_periodo AS (
   SELECT
     d."Id" AS device_id,
-    COUNT(dl."Time")                                                    AS recibidos_n,             -- Mensajes recibidos (n)
-    COUNT(dl."Time") FILTER (WHERE dl."HasLocation")                    AS con_gps_n,               -- Mensaje con posición GPS (n)
-    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND dl."IsValid")   AS validas_n,               -- Posición GPS válida (n)
+    COUNT(dl."Time")                                                    AS recibidos_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation")                    AS con_gps_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND dl."IsValid")   AS validas_n,
     COUNT(dl."Time") FILTER (
       WHERE dl."HasLocation" AND dl."IsValid" AND dl."IsLowAccuracy"
-    )                                                                   AS baja_precision_n,        -- Baja precisión (n)
-    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid") AS no_validas_n,          -- Posición GPS no válida (n)
+    )                                                                   AS baja_precision_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid") AS no_validas_n,
     COUNT(dl."Time") FILTER (
       WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'parameters'
-    )                                                                   AS no_valida_calidad_gps_n, -- No válida por calidad GPS (n)
+    )                                                                   AS no_valida_calidad_gps_n,
     COUNT(dl."Time") FILTER (
       WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'distance'
-    )                                                                   AS no_valida_filtro_velocidad_n, -- No válida por filtro velocidad (n)
-    COUNT(DISTINCT DATE(dl."Time"))                                     AS dias_con_datos           -- no se usa en 24h, pero queda por si amplías periodo
-  FROM active_devices d
+    )                                                                   AS no_valida_filtro_velocidad_n,
+    COUNT(DISTINCT DATE(dl."Time"))                                     AS dias_con_datos
+  FROM base d
   LEFT JOIN "DeviceLocations" dl
     ON dl."DeviceId" = d."Id"
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
@@ -98,7 +120,7 @@ SELECT
   d."Model",
   d."UplinksPerDay" AS mensajes_esperados,
 
-  COALESCE(g24.total_mensajes_24h, 0) AS mensajes_recibidos,
+  COALESCE(g24.total_mensajes_24h, 0)   AS mensajes_recibidos,
   COALESCE(g24.mensajes_sin_gps_24h, 0) AS mensajes_sin_gps,
 
   ROUND(
@@ -128,14 +150,20 @@ SELECT
   d."ChangedBatteryOn" AS fecha_cambio_bateria,
   d."SumUplinksCount" AS suma_total_uplinks,
 
-  r."Name" AS ranch_name,
-  c."Name" AS customer_name,
-  a."Name" AS animal_name,
+  r."Name"    AS ranch_name,
+  c."Name"    AS customer_name,
+
+  -- Nombre del animal viene de base (RIGHT JOIN sobre Animals)
+  d.animal_name AS animal_name,
+
+  -- >>> NUEVO: País y Región de la ganadería
+  r."Country" AS "Country",
+  r."Region"  AS "Region",
 
   -- =============================
   -- MÉTRICAS DETALLADAS (24h)
   -- =============================
-  d."UplinksPerDay"                                              AS "Mensajes esperados (detallado)",  -- = UplinksPerDay en 24h
+  d."UplinksPerDay"                                              AS "Mensajes esperados (detallado)",
   COALESCE(gp.recibidos_n, 0)                                    AS "Mensajes recibidos (n)",
   ROUND(
     CASE WHEN d."UplinksPerDay" > 0
@@ -223,13 +251,12 @@ SELECT
     THEN TRUE ELSE FALSE
   END                                                            AS "Ganadería OK (>70% dispositivos OK)"
 
-FROM active_devices d
+FROM base d
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
-LEFT JOIN gps_stats_full gf ON gf."DeviceId" = d."Id"
-LEFT JOIN gps_stats_periodo gp ON gp.device_id = d."Id"
+LEFT JOIN gps_stats_full    gf  ON gf."DeviceId" = d."Id"
+LEFT JOIN gps_stats_periodo gp  ON gp.device_id = d."Id"
 JOIN "Ranches" r ON d."RanchId" = r."Id"
 LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
-JOIN "Animals" a ON a."DeviceId" = d."Id" AND a."IsDeregistered" = FALSE
 
 WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
@@ -245,7 +272,6 @@ def ejecutar(engine, set_timezone: str = "Europe/Madrid"):
     - Envuélvela con sqlalchemy.text() para evitar problemas con CTEs/ventanas.
     - Rellena NaN solo en columnas numéricas.
     """
-    # Nombre del script (para logs)
     try:
         frame_file = inspect.getfile(inspect.currentframe())
         nombre_script = os.path.splitext(os.path.basename(frame_file))[0]
@@ -254,14 +280,11 @@ def ejecutar(engine, set_timezone: str = "Europe/Madrid"):
 
     try:
         with engine.connect() as con:
-            # Alinea la sesión a tu TZ habitual (ajusta si usas UTC en servidor)
             if set_timezone:
                 con.exec_driver_sql(f"SET TIME ZONE '{set_timezone}';")
 
-            # Ejecutar la SQL (IMPORTANTE: text(query))
             df = pd.read_sql_query(text(query), con)
 
-        # Rellenar solo columnas numéricas
         num_cols = df.select_dtypes(include=["number"]).columns
         if len(num_cols) > 0:
             df[num_cols] = df[num_cols].fillna(0)
@@ -273,11 +296,3 @@ def ejecutar(engine, set_timezone: str = "Europe/Madrid"):
         print(f"❌ Error al ejecutar la consulta {nombre_script}: {e}")
         traceback.print_exc()
         return pd.DataFrame()
-
-# =========================
-#  (Opcional) uso de ejemplo
-# =========================
-# from your_project.db_connection import get_engine
-# engine = get_engine()
-# df = ejecutar(engine)
-# df.to_csv("dt01_disponibilidad_24h.csv", index=False, encoding="utf-8")
