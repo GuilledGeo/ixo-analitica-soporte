@@ -156,7 +156,7 @@ SELECT
   -- Nombre del animal viene de base (RIGHT JOIN sobre Animals)
   d.animal_name AS animal_name,
 
-  -- >>> NUEVO: País y Región de la ganadería
+  -- País y Región de la ganadería
   r."Country" AS "Country",
   r."Region"  AS "Region",
 
@@ -224,15 +224,15 @@ SELECT
 
   CASE
     WHEN d."UplinksPerDay" > 0
-         AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) > 60
+         AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
     THEN TRUE ELSE FALSE
-  END                                                            AS "Dispositivo OK (>60% válidas vs esperadas)",
+  END                                                            AS "Dispositivo OK (≥60% válidas vs esperadas)",
 
   ROUND(
     100.0 * AVG(
       CASE
         WHEN d."UplinksPerDay" > 0
-             AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) > 60
+             AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
         THEN 1 ELSE 0
       END
     ) OVER (PARTITION BY r."Name")
@@ -243,13 +243,13 @@ SELECT
       100.0 * AVG(
         CASE
           WHEN d."UplinksPerDay" > 0
-               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) > 60
+               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
           THEN 1 ELSE 0
         END
       ) OVER (PARTITION BY r."Name")
-    ) > 70
+    ) >= 70
     THEN TRUE ELSE FALSE
-  END                                                            AS "Ganadería OK (>70% dispositivos OK)"
+  END                                                            AS "Ganadería OK (≥70% dispositivos OK)"
 
 FROM base d
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
@@ -260,6 +260,7 @@ LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
 
 WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
+
 """
 
 # =========================

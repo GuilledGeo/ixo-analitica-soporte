@@ -6,7 +6,7 @@ import traceback
 # === CONFIGURACIÓN MANUAL ===
 CONSULTAS = [
     "consulta_01",
-    #"consutla_02",
+    "consutla_02"
     #"consulta_03"
     
     ]  # ← Selecciona aquí las consultas a ejecutar

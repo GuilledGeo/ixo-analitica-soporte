@@ -108,6 +108,9 @@ else:
 # === Tabs ===
 tab1, tab2, tab3 = st.tabs([f"📊 Panel General – {filtro_titulo}", "📈 Análisis Avanzado", "⚙️ Control"])
 
+# =========================
+#  # TAB 1
+# =========================
 with tab1:
     st.subheader(f"📊 Panel de Control – {filtro_titulo}")
 
@@ -212,6 +215,266 @@ with tab1:
                     st.info("No hay coordenadas disponibles para mostrar el mapa.")
             else:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
+
+# =========================
+# TAB 2
+# =========================
+
+with tab2:
+    # =========================
+    # SUB-TABS
+    # =========================
+    sub1, sub2 = st.tabs(["🧬 Esquema del dataset", "🏥 Salud de ganaderías <24h"])
+
+    # ==========================================================
+    # SUB-TAB 1) ESQUEMA DEL DATASET (índice, columna, tipo)
+    # ==========================================================
+    with sub1:
+        st.subheader("🧬 Esquema del dataset")
+        if df.empty:
+            st.info("No hay datos tras los filtros aplicados.")
+        else:
+            # Dtypes + nulos
+            schema_df = (
+                pd.DataFrame({
+                    "columna": df.columns,
+                    "tipo_dato": [str(t) for t in df.dtypes.values],
+                    "n_nulos": df.isna().sum().values
+                })
+                .reset_index()
+                .rename(columns={"index": "indice"})
+            )
+
+            # Reordenar como tu ejemplo (indice, columna, tipo_dato)
+            schema_df = schema_df[["indice", "columna", "tipo_dato", "n_nulos"]]
+
+            st.markdown("Vista general de columnas y tipos (incluye nulos):")
+            st.data_editor(
+                schema_df,
+                hide_index=True,
+                use_container_width=True,
+                height=420
+            )
+
+            # Extras útiles
+            st.markdown("**Resumen rápido**")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Filas", f"{len(df):,}")
+            c2.metric("Columnas", f"{df.shape[1]:,}")
+            c3.metric("Nº columnas con nulos", f"{(schema_df['n_nulos']>0).sum():,}")
+
+            # Descarga CSV del esquema
+            st.download_button(
+                "⬇️ Descargar esquema (CSV)",
+                data=schema_df.to_csv(index=False).encode("utf-8"),
+                file_name="esquema_dataset.csv",
+                mime="text/csv"
+            )
+
+    # ==========================================================
+    # SUB-TAB 2) SALUD DE GANADERÍAS <24h (OK / Errores)
+    # ==========================================================
+    with sub2:
+        st.subheader("🏥 Salud de ganaderías en las últimas 24h")
+
+        # Columnas requeridas mínimas
+        col_ranch = "ranch_name"
+        col_device = "device_id"
+        col_device_ok = "Dispositivo OK (>60% válidas vs esperadas)"
+        col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
+
+        # Comprobar columnas
+        faltantes = [c for c in [col_ranch, col_device, col_device_ok] if c not in df.columns]
+        if faltantes:
+            st.warning(
+                "No puedo evaluar completamente la salud de ganaderías porque faltan estas columnas: "
+                + ", ".join([f"`{c}`" for c in faltantes])
+            )
+            st.stop()
+
+        # Antena (no disponible todavía)
+        st.info("🔌 **Estado de antena**: *no evaluado en esta versión* (no hay columna de antena online/offline).")
+
+        # --- Agregación por ganadería ---
+        agr = (
+            df.groupby(col_ranch)
+              .agg(
+                  n_dispositivos=(col_device, "nunique"),
+                  n_ok=(col_device_ok, "sum")
+              )
+              .reset_index()
+        )
+        agr["pct_ok"] = (agr["n_ok"] / agr["n_dispositivos"]).fillna(0.0)
+
+        # Regla de negocio: ganadería OK si pct_ok >= 70%
+        umbral_ranch_ok = 0.70
+        agr["ganaderia_ok"] = agr["pct_ok"] >= umbral_ranch_ok
+
+        # KPIs
+        total_g = len(agr)
+        g_ok = int(agr["ganaderia_ok"].sum())
+        g_err = total_g - g_ok
+        pct_g_ok = (g_ok / total_g * 100) if total_g else 0.0
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Ganaderías monitorizadas", f"{total_g:,}")
+        c2.metric("Ganaderías OK", f"{g_ok:,}", delta=f"{pct_g_ok:.1f}%")
+        c3.metric("Ganaderías con errores", f"{g_err:,}", delta=f"{100 - pct_g_ok:.1f}%")
+        # Dispositivos OK global
+        n_dev_total = df[col_device].nunique()
+        n_dev_ok = int(df[df[col_device_ok]][col_device].nunique())
+        c4.metric("Dispositivos OK (global)", f"{n_dev_ok:,}/{n_dev_total:,}")
+
+        st.divider()
+
+        # --- Gráficas principales ---
+        gcol1, gcol2 = st.columns(2)
+
+        with gcol1:
+            # Barras % OK por ganadería (orden ascendente)
+            if not agr.empty:
+                agr_plot = agr.sort_values("pct_ok", ascending=True).copy()
+                fig = px.bar(
+                    agr_plot,
+                    x="pct_ok",
+                    y=col_ranch,
+                    orientation="h",
+                    text=(agr_plot["pct_ok"] * 100).round(1).astype(str) + "%",
+                    title="📊 % de dispositivos OK por ganadería (<24h)",
+                )
+                fig.update_layout(
+                    xaxis_title="% dispositivos OK",
+                    yaxis_title="Ganadería",
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    height=520
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos para graficar % OK por ganadería.")
+
+        with gcol2:
+            # Tarta Ganaderías OK vs Error
+            if total_g > 0:
+                pie_df = pd.DataFrame({
+                    "estado": ["OK", "Con error"],
+                    "n": [g_ok, g_err]
+                })
+                fig = px.pie(pie_df, names="estado", values="n", title="🧩 Ganaderías: OK vs Con error")
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Histograma (opcional) distribución % válida vs esperadas a nivel dispositivo
+            if col_pct_valid_vs_exp in df.columns:
+                fig = px.histogram(
+                    df,
+                    x=col_pct_valid_vs_exp,
+                    nbins=25,
+                    title="Distribución dispositivos: Posición válida vs esperadas (%)"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        st.divider()
+
+        # --- Clasificación de errores (limitado por columnas disponibles) ---
+        st.markdown("### 🧯 Clasificación de ganaderías con error (reglas aplicadas)")
+        st.caption(
+            "- **Error 1**: Antena no conectada → *no evaluado (sin columna de antena)*\n"
+            "- **Error 2**: Dispositivos con <60% válidas vs esperadas → listamos dispositivos afectados\n"
+            "- **Error 3**: Ganadería con <70% de dispositivos OK"
+        )
+
+        # Error 3: ganaderías con <70% OK
+        err3_df = agr[~agr["ganaderia_ok"]].copy()
+        if not err3_df.empty:
+            err3_df_display = err3_df[[col_ranch, "n_dispositivos", "n_ok", "pct_ok"]].copy()
+            err3_df_display["pct_ok"] = (err3_df_display["pct_ok"] * 100).round(1)
+            err3_df_display = err3_df_display.rename(columns={
+                col_ranch: "Ganadería",
+                "n_dispositivos": "Nº dispositivos",
+                "n_ok": "Nº OK",
+                "pct_ok": "% OK"
+            })
+            st.markdown("#### 🔴 Error 3: Ganaderías con baja proporción de dispositivos OK (<70%)")
+            st.data_editor(
+                err3_df_display,
+                hide_index=True,
+                use_container_width=True,
+                height=320
+            )
+        else:
+            st.success("✅ No hay ganaderías con Error 3 (<70% dispositivos OK).")
+
+        # Error 2: dispositivos con <60% válidas vs esperadas (listado por ganadería)
+        st.markdown("#### 🟠 Error 2: Dispositivos con <60% de posiciones válidas esperadas")
+        dev_fail = df[~df[col_device_ok]].copy()
+        if not dev_fail.empty:
+            cols_show = [c for c in [
+                col_ranch, "customer_name", col_device, "SerialNumber",
+                col_pct_valid_vs_exp, "pct_recibidos_vs_esperados",
+                "mensajes_esperados", "mensajes_recibidos", "mensajes_sin_gps",
+                "Model", "Region", "Country"
+            ] if c in dev_fail.columns]
+
+            # Ordenar para lectura (peor primero)
+            if col_pct_valid_vs_exp in cols_show:
+                dev_fail = dev_fail.sort_values(col_pct_valid_vs_exp, ascending=True)
+
+            st.data_editor(
+                dev_fail[cols_show],
+                hide_index=True,
+                use_container_width=True,
+                height=420,
+                column_config={
+                    col_pct_valid_vs_exp: st.column_config.ProgressColumn(
+                        "Posición válida vs esperadas (%)", format="%.1f"
+                    ),
+                    "pct_recibidos_vs_esperados": st.column_config.ProgressColumn(
+                        "Ratio recibidos vs esperados (%)", format="%.2f"
+                    )
+                }
+            )
+
+            # Resumen por ganadería (cuántos fallan)
+            resumen_fail = (dev_fail.groupby(col_ranch)[col_device]
+                                     .nunique().reset_index()
+                                     .rename(columns={col_ranch: "Ganadería", col_device: "Dispositivos <60%"}))
+            st.markdown("##### Resumen por ganadería (dispositivos con <60%)")
+            st.data_editor(
+                resumen_fail.sort_values("Dispositivos <60%", ascending=False),
+                hide_index=True,
+                use_container_width=True,
+                height=260
+            )
+        else:
+            st.success("✅ No hay dispositivos con <60% de posiciones válidas vs esperadas.")
+
+        st.divider()
+
+        # --- Tabla general de estado por ganadería (OK/Error) ---
+        st.markdown("### 🗂️ Estado por ganadería (resumen)")
+        resumen = agr.copy()
+        resumen["% OK"] = (resumen["pct_ok"] * 100).round(1)
+        resumen["Estado"] = resumen["ganaderia_ok"].map({True: "OK", False: "Con error"})
+        resumen = resumen.rename(columns={
+            col_ranch: "Ganadería",
+            "n_dispositivos": "Nº dispositivos",
+            "n_ok": "Nº OK"
+        })[["Ganadería", "Nº dispositivos", "Nº OK", "% OK", "Estado"]].sort_values("% OK", ascending=False)
+
+        st.data_editor(
+            resumen,
+            hide_index=True,
+            use_container_width=True,
+            height=340
+        )
+
+        # Botón de descarga
+        st.download_button(
+            "⬇️ Descargar estado por ganadería (CSV)",
+            data=resumen.to_csv(index=False).encode("utf-8"),
+            file_name="estado_ganaderias_24h.csv",
+            mime="text/csv"
+        )
+
 
 st.markdown("---")
 st.markdown(

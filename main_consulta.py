@@ -9,9 +9,10 @@ import src.features.consulta_1 as features_modulo
 
 sys.path.append(os.path.abspath("."))
 
+
 CONSULTAS = [
-    #"consulta_01",
-    "consulta_02"
+    "consulta_01" 
+   # "consulta_02",
     #"consulta_03"
 ]
 
