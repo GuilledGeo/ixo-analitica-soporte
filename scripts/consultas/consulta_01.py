@@ -33,7 +33,7 @@ WITH active_devices AS (
     AND "Disabled" = FALSE
     AND "StatusType" = 'shipped'
 ),
--- Animales activos (1 nombre por DeviceId). Si tienes UpdatedAt, puedes reemplazar por DISTINCT ON.
+-- Animales activos (1 nombre por DeviceId)
 current_animals AS (
   SELECT
     "DeviceId",
@@ -42,7 +42,7 @@ current_animals AS (
   WHERE "IsDeregistered" = FALSE
   GROUP BY "DeviceId"
 ),
--- BASE: conduce Animals (RIGHT JOIN explícito) + exige device shipped
+-- BASE: Devices shipped + nombre de animal (si hay)
 base AS (
   SELECT
     d.*,
@@ -50,10 +50,9 @@ base AS (
   FROM active_devices d
   RIGHT JOIN current_animals ca
     ON ca."DeviceId" = d."Id"
-  WHERE d."Id" IS NOT NULL  -- garantiza que el device existe y está 'shipped'
+  WHERE d."Id" IS NOT NULL
 ),
-
--- Métricas simples 24h (idénticas a tu CTE original, pero desde BASE)
+-- Métricas simples 24h
 gps_stats_24h_all AS (
   SELECT
     d."Id" AS device_id,
@@ -65,8 +64,7 @@ gps_stats_24h_all AS (
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
 ),
-
--- Últimos mensajes / última posición válida (sin límite temporal)
+-- Últimos mensajes / última posición válida (histórico)
 gps_stats_full AS (
   SELECT
     dl."DeviceId",
@@ -88,30 +86,77 @@ gps_stats_full AS (
   FROM "DeviceLocations" dl
   GROUP BY dl."DeviceId"
 ),
-
--- Métricas detalladas 24h (mismos denominadores)
+-- Métricas detalladas 24h
 gps_stats_periodo AS (
   SELECT
     d."Id" AS device_id,
     COUNT(dl."Time")                                                    AS recibidos_n,
     COUNT(dl."Time") FILTER (WHERE dl."HasLocation")                    AS con_gps_n,
     COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND dl."IsValid")   AS validas_n,
-    COUNT(dl."Time") FILTER (
-      WHERE dl."HasLocation" AND dl."IsValid" AND dl."IsLowAccuracy"
-    )                                                                   AS baja_precision_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND dl."IsValid" AND dl."IsLowAccuracy") AS baja_precision_n,
     COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid") AS no_validas_n,
-    COUNT(dl."Time") FILTER (
-      WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'parameters'
-    )                                                                   AS no_valida_calidad_gps_n,
-    COUNT(dl."Time") FILTER (
-      WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'distance'
-    )                                                                   AS no_valida_filtro_velocidad_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'parameters') AS no_valida_calidad_gps_n,
+    COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'distance')   AS no_valida_filtro_velocidad_n,
     COUNT(DISTINCT DATE(dl."Time"))                                     AS dias_con_datos
   FROM base d
   LEFT JOIN "DeviceLocations" dl
     ON dl."DeviceId" = d."Id"
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
+),
+/* ===========================================================
+   GATEWAYS (exigir TODAS online)
+   -----------------------------------------------------------
+   - gw_agg: por rancho, total y online según umbral (3h)
+   - gw_latest: gateway más reciente por rancho (para trazas)
+   =========================================================== */
+gw_agg AS (
+  SELECT
+    rlg."RanchId"                                   AS ranch_id,
+    COUNT(*)                                        AS total_gateways,
+    COUNT(*) FILTER (
+      WHERE lg."LastSeenAt" IS NOT NULL
+        AND lg."LastSeenAt" >= NOW() - INTERVAL '3 hours'
+    )                                               AS gateways_online
+  FROM "RanchesLoraGateways" rlg
+  JOIN "LoraGateways" lg
+    ON lg."Id" = rlg."GatewayId"
+  GROUP BY rlg."RanchId"
+),
+gw_derived AS (
+  SELECT
+    a.ranch_id,
+    a.total_gateways,
+    a.gateways_online,
+    CASE
+      WHEN COALESCE(a.total_gateways,0) = 0                   THEN FALSE           -- sin gateways -> NO OK
+      WHEN a.gateways_online = a.total_gateways               THEN TRUE            -- todas online
+      ELSE FALSE
+    END                                                       AS all_gateways_online,
+    CASE
+      WHEN COALESCE(a.total_gateways,0) = 0                   THEN 'sin_gateway'
+      WHEN a.gateways_online = 0                              THEN 'todas_desconectadas'
+      WHEN a.gateways_online = a.total_gateways               THEN 'todas_conectadas'
+      ELSE 'algunas_desconectadas'
+    END                                                       AS ranch_gateway_overall_status
+  FROM gw_agg a
+),
+-- Gateway más reciente (para info puntual)
+gw_latest AS (
+  SELECT
+    rlg."RanchId"                           AS ranch_id,
+    lg."Id"                                 AS gateway_id,
+    lg."Name"                               AS gateway_name,
+    lg."SerialNumber"                       AS gateway_serial,
+    lg."LastSeenAt"                         AS gateway_last_seen,
+    lg."Location"                           AS gateway_location,
+    ROW_NUMBER() OVER (
+      PARTITION BY rlg."RanchId"
+      ORDER BY lg."LastSeenAt" DESC NULLS LAST, lg."CreatedAt" DESC NULLS LAST
+    ) AS rn
+  FROM "RanchesLoraGateways" rlg
+  JOIN "LoraGateways" lg
+    ON lg."Id" = rlg."GatewayId"
 )
 
 SELECT
@@ -152,11 +197,7 @@ SELECT
 
   r."Name"    AS ranch_name,
   c."Name"    AS customer_name,
-
-  -- Nombre del animal viene de base (RIGHT JOIN sobre Animals)
   d.animal_name AS animal_name,
-
-  -- País y Región de la ganadería
   r."Country" AS "Country",
   r."Region"  AS "Region",
 
@@ -170,42 +211,36 @@ SELECT
          THEN gp.recibidos_n::numeric / d."UplinksPerDay" * 100
     END, 2
   )                                                              AS "Mensajes recibidos (%)",
-
   COALESCE(gp.con_gps_n, 0)                                      AS "Mensaje con posición GPS (n)",
   ROUND(
     CASE WHEN gp.recibidos_n > 0
          THEN gp.con_gps_n::numeric / gp.recibidos_n * 100
     END, 2
   )                                                              AS "Mensaje con posición GPS (%)",
-
   COALESCE(gp.validas_n, 0)                                      AS "Posición GPS válida (n)",
   ROUND(
     CASE WHEN gp.recibidos_n > 0
          THEN gp.validas_n::numeric / gp.recibidos_n * 100
     END, 2
   )                                                              AS "Posición GPS válida (%)",
-
   COALESCE(gp.baja_precision_n, 0)                               AS "Baja precisión (n)",
   ROUND(
     CASE WHEN gp.validas_n > 0
          THEN gp.baja_precision_n::numeric / gp.validas_n * 100
     END, 2
   )                                                              AS "Baja precisión (%)",
-
   COALESCE(gp.no_validas_n, 0)                                   AS "Posición GPS no válida (n)",
   ROUND(
     CASE WHEN gp.recibidos_n > 0
          THEN gp.no_validas_n::numeric / gp.recibidos_n * 100
     END, 2
   )                                                              AS "Posición GPS no válida (%)",
-
   COALESCE(gp.no_valida_calidad_gps_n, 0)                        AS "No válida por calidad GPS (n)",
   ROUND(
     CASE WHEN gp.no_validas_n > 0
          THEN gp.no_valida_calidad_gps_n::numeric / gp.no_validas_n * 100
     END, 2
   )                                                              AS "No válida por calidad GPS (%)",
-
   COALESCE(gp.no_valida_filtro_velocidad_n, 0)                   AS "No válida por filtro velocidad (n)",
   ROUND(
     CASE WHEN gp.no_validas_n > 0
@@ -213,21 +248,19 @@ SELECT
     END, 2
   )                                                              AS "No válida por filtro velocidad (%)",
 
-  -- =========================================================
-  -- CONDICIONANTE DE GANADERÍA (ranch_name)
-  -- =========================================================
+  -- Dispositivo OK (≥60% válidas vs esperadas)
   ROUND(
     CASE WHEN d."UplinksPerDay" > 0
          THEN COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100
     END, 2
   )                                                              AS "Posición válida vs esperadas (%)",
-
   CASE
     WHEN d."UplinksPerDay" > 0
          AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
     THEN TRUE ELSE FALSE
   END                                                            AS "Dispositivo OK (≥60% válidas vs esperadas)",
 
+  -- % dispositivos OK por ganadería (ventana)
   ROUND(
     100.0 * AVG(
       CASE
@@ -238,6 +271,7 @@ SELECT
     ) OVER (PARTITION BY r."Name")
   , 2)                                                           AS "% dispositivos OK en ganadería",
 
+  -- Ganadería OK (≥70% dispositivos OK)
   CASE
     WHEN (
       100.0 * AVG(
@@ -249,7 +283,42 @@ SELECT
       ) OVER (PARTITION BY r."Name")
     ) >= 70
     THEN TRUE ELSE FALSE
-  END                                                            AS "Ganadería OK (≥70% dispositivos OK)"
+  END                                                            AS "Ganadería OK (≥70% dispositivos OK)",
+
+  -- =============================
+  -- INFO GATEWAYS (TODAS online)
+  -- =============================
+  COALESCE(ga.total_gateways, 0)              AS ranch_gateway_count,
+  COALESCE(ga.gateways_online, 0)             AS gateways_online,
+  COALESCE(ga.all_gateways_online, FALSE)     AS all_gateways_online,
+  COALESCE(ga.ranch_gateway_overall_status, 'sin_gateway') AS ranch_gateway_overall_status,
+
+  -- Gateway más reciente (trazabilidad)
+  gl.gateway_id,
+  gl.gateway_name,
+  gl.gateway_serial,
+  gl.gateway_last_seen,
+  ST_Y(gl.gateway_location::geometry)         AS gateway_lat,
+  ST_X(gl.gateway_location::geometry)         AS gateway_lon,
+  CASE
+    WHEN gl.gateway_last_seen IS NULL THEN NULL
+    ELSE ROUND(EXTRACT(EPOCH FROM (NOW() - gl.gateway_last_seen)) / 3600.0, 2)
+  END                                         AS horas_desde_ultimo_visto,
+
+  -- Ganadería OK **con antenas**: ≥70% disp. OK Y todas antenas online
+  CASE
+    WHEN (
+      100.0 * AVG(
+        CASE
+          WHEN d."UplinksPerDay" > 0
+               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
+          THEN 1 ELSE 0
+        END
+      ) OVER (PARTITION BY r."Name")
+    ) >= 70
+    AND COALESCE(ga.all_gateways_online, FALSE) = TRUE
+    THEN TRUE ELSE FALSE
+  END                                         AS "Ganadería OK (≥70% disp. OK y TODAS antenas online)"
 
 FROM base d
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
@@ -258,8 +327,13 @@ LEFT JOIN gps_stats_periodo gp  ON gp.device_id = d."Id"
 JOIN "Ranches" r ON d."RanchId" = r."Id"
 LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
 
+-- Gateways (agregado + latest)
+LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
+LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
+
 WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
+
 
 """
 

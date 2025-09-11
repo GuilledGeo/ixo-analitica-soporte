@@ -216,6 +216,8 @@ pip install -r requirements.txt
 #(5) Actualizar dash
 git add -f data/processed/consulta_01_2025-08-05_10-01_v01.csv
 
+#(6) correr dash local
 
+streamlit run app/soporte_dashboard.py
 
 ```
