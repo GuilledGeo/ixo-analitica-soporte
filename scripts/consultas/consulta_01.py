@@ -33,7 +33,6 @@ WITH active_devices AS (
     AND "Disabled" = FALSE
     AND "StatusType" = 'shipped'
 ),
--- Animales activos (1 nombre por DeviceId)
 current_animals AS (
   SELECT
     "DeviceId",
@@ -42,7 +41,6 @@ current_animals AS (
   WHERE "IsDeregistered" = FALSE
   GROUP BY "DeviceId"
 ),
--- BASE: Devices shipped + nombre de animal (si hay)
 base AS (
   SELECT
     d.*,
@@ -52,7 +50,6 @@ base AS (
     ON ca."DeviceId" = d."Id"
   WHERE d."Id" IS NOT NULL
 ),
--- Métricas simples 24h
 gps_stats_24h_all AS (
   SELECT
     d."Id" AS device_id,
@@ -64,7 +61,6 @@ gps_stats_24h_all AS (
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
 ),
--- Últimos mensajes / última posición válida (histórico)
 gps_stats_full AS (
   SELECT
     dl."DeviceId",
@@ -86,7 +82,6 @@ gps_stats_full AS (
   FROM "DeviceLocations" dl
   GROUP BY dl."DeviceId"
 ),
--- Métricas detalladas 24h
 gps_stats_periodo AS (
   SELECT
     d."Id" AS device_id,
@@ -104,12 +99,6 @@ gps_stats_periodo AS (
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
 ),
-/* ===========================================================
-   GATEWAYS (exigir TODAS online)
-   -----------------------------------------------------------
-   - gw_agg: por rancho, total y online según umbral (3h)
-   - gw_latest: gateway más reciente por rancho (para trazas)
-   =========================================================== */
 gw_agg AS (
   SELECT
     rlg."RanchId"                                   AS ranch_id,
@@ -129,8 +118,8 @@ gw_derived AS (
     a.total_gateways,
     a.gateways_online,
     CASE
-      WHEN COALESCE(a.total_gateways,0) = 0                   THEN FALSE           -- sin gateways -> NO OK
-      WHEN a.gateways_online = a.total_gateways               THEN TRUE            -- todas online
+      WHEN COALESCE(a.total_gateways,0) = 0                   THEN FALSE
+      WHEN a.gateways_online = a.total_gateways               THEN TRUE
       ELSE FALSE
     END                                                       AS all_gateways_online,
     CASE
@@ -141,7 +130,6 @@ gw_derived AS (
     END                                                       AS ranch_gateway_overall_status
   FROM gw_agg a
 ),
--- Gateway más reciente (para info puntual)
 gw_latest AS (
   SELECT
     rlg."RanchId"                           AS ranch_id,
@@ -158,7 +146,6 @@ gw_latest AS (
   JOIN "LoraGateways" lg
     ON lg."Id" = rlg."GatewayId"
 )
-
 SELECT
   d."Id" AS device_id,
   d."SerialNumber",
@@ -260,7 +247,7 @@ SELECT
     THEN TRUE ELSE FALSE
   END                                                            AS "Dispositivo OK (≥60% válidas vs esperadas)",
 
-  -- % dispositivos OK por ganadería (ventana)
+  -- % dispositivos OK por ganadería (solo dispositivos)
   ROUND(
     100.0 * AVG(
       CASE
@@ -271,7 +258,7 @@ SELECT
     ) OVER (PARTITION BY r."Name")
   , 2)                                                           AS "% dispositivos OK en ganadería",
 
-  -- Ganadería OK (≥70% dispositivos OK)
+  -- Ganadería OK (≥70% dispositivos OK) — SIN antenas
   CASE
     WHEN (
       100.0 * AVG(
@@ -286,14 +273,13 @@ SELECT
   END                                                            AS "Ganadería OK (≥70% dispositivos OK)",
 
   -- =============================
-  -- INFO GATEWAYS (TODAS online)
+  -- INFO GATEWAYS (solo informativo)
   -- =============================
   COALESCE(ga.total_gateways, 0)              AS ranch_gateway_count,
   COALESCE(ga.gateways_online, 0)             AS gateways_online,
   COALESCE(ga.all_gateways_online, FALSE)     AS all_gateways_online,
   COALESCE(ga.ranch_gateway_overall_status, 'sin_gateway') AS ranch_gateway_overall_status,
 
-  -- Gateway más reciente (trazabilidad)
   gl.gateway_id,
   gl.gateway_name,
   gl.gateway_serial,
@@ -303,22 +289,7 @@ SELECT
   CASE
     WHEN gl.gateway_last_seen IS NULL THEN NULL
     ELSE ROUND(EXTRACT(EPOCH FROM (NOW() - gl.gateway_last_seen)) / 3600.0, 2)
-  END                                         AS horas_desde_ultimo_visto,
-
-  -- Ganadería OK **con antenas**: ≥70% disp. OK Y todas antenas online
-  CASE
-    WHEN (
-      100.0 * AVG(
-        CASE
-          WHEN d."UplinksPerDay" > 0
-               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
-          THEN 1 ELSE 0
-        END
-      ) OVER (PARTITION BY r."Name")
-    ) >= 70
-    AND COALESCE(ga.all_gateways_online, FALSE) = TRUE
-    THEN TRUE ELSE FALSE
-  END                                         AS "Ganadería OK (≥70% disp. OK y TODAS antenas online)"
+  END                                         AS horas_desde_ultimo_visto
 
 FROM base d
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
@@ -326,13 +297,11 @@ LEFT JOIN gps_stats_full    gf  ON gf."DeviceId" = d."Id"
 LEFT JOIN gps_stats_periodo gp  ON gp.device_id = d."Id"
 JOIN "Ranches" r ON d."RanchId" = r."Id"
 LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
-
--- Gateways (agregado + latest)
 LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
 LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
-
 WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
+
 
 
 """
