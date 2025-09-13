@@ -11,9 +11,11 @@ sys.path.append(os.path.abspath("."))
 
 
 CONSULTAS = [
-    "consulta_01" 
+   # "consulta_01" 
    # "consulta_02",
-    #"consulta_03"
+   # "consulta_03",
+    "consulta_04"
+   # "consulta_05"
 ]
 
 def generar_nombre_versionado(nombre_base, carpeta="data/processed", extension=".csv"):
