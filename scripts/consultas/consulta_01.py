@@ -272,6 +272,44 @@ SELECT
     THEN TRUE ELSE FALSE
   END                                                            AS "Ganadería OK (≥70% dispositivos OK)",
 
+  -- ===========================================================
+  -- NUEVAS MÉTRICAS BASADAS EN RECIBIDAS (LO MISMO PERO RECIBIDAS)
+  -- ===========================================================
+  ROUND(
+    CASE WHEN gp.recibidos_n > 0
+         THEN gp.validas_n::numeric / gp.recibidos_n * 100
+    END, 2
+  )                                                              AS "Posición válida vs recibidas (%)",
+
+  CASE
+    WHEN gp.recibidos_n > 0
+         AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
+    THEN TRUE ELSE FALSE
+  END                                                            AS "Dispositivo OK (≥60% válidas vs recibidas)",
+
+  ROUND(
+    100.0 * AVG(
+      CASE
+        WHEN gp.recibidos_n > 0
+             AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
+        THEN 1 ELSE 0
+      END
+    ) OVER (PARTITION BY r."Name")
+  , 2)                                                           AS "% dispositivos OK en ganadería (recibidas)",
+
+  CASE
+    WHEN (
+      100.0 * AVG(
+        CASE
+          WHEN gp.recibidos_n > 0
+               AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
+          THEN 1 ELSE 0
+        END
+      ) OVER (PARTITION BY r."Name")
+    ) >= 70
+    THEN TRUE ELSE FALSE
+  END                                                            AS "Ganadería OK (≥70% disp. OK - recibidas)",
+
   -- =============================
   -- INFO GATEWAYS (solo informativo)
   -- =============================
@@ -301,7 +339,6 @@ LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
 LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
 WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
-
 
 
 """

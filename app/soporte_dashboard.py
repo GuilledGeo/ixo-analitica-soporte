@@ -231,7 +231,7 @@ with tab2:
     # =========================
     df_work = df.copy()
 
-    # Columna dispositivo_ok: usa la tuya si existe; si no, la calculamos
+    # Columna dispositivo_ok (ESPERADAS): usa la tuya si existe; si no, la calculamos
     if "Dispositivo OK (≥60% válidas vs esperadas)" in df_work.columns:
         df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥60% válidas vs esperadas)"].astype(bool)
     else:
@@ -240,6 +240,21 @@ with tab2:
             df_work["dispositivo_ok"] = (pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce") >= 60).fillna(False)
         else:
             df_work["dispositivo_ok"] = False  # fallback conservador
+
+    # === NUEVO: Columna dispositivo_ok_rec (RECIBIDAS)
+    if "Dispositivo OK (≥60% válidas vs recibidas)" in df_work.columns:
+        df_work["dispositivo_ok_rec"] = df_work["Dispositivo OK (≥60% válidas vs recibidas)"].astype(bool)
+    elif "Posición válida vs recibidas (%)" in df_work.columns:
+        pct_rec = pd.to_numeric(df_work["Posición válida vs recibidas (%)"], errors="coerce")
+        df_work["dispositivo_ok_rec"] = (pct_rec >= 60).fillna(False)
+    elif {"Posición GPS válida (n)", "Mensajes recibidos (n)"} <= set(df_work.columns):
+        # Recalcular % recibidas si no viene hecho
+        valid_n = pd.to_numeric(df_work["Posición GPS válida (n)"], errors="coerce")
+        rec_n = pd.to_numeric(df_work["Mensajes recibidos (n)"], errors="coerce").replace({0: pd.NA})
+        pct_rec = (valid_n / rec_n) * 100
+        df_work["dispositivo_ok_rec"] = (pct_rec >= 60).fillna(False)
+    else:
+        df_work["dispositivo_ok_rec"] = False  # fallback conservador
 
     # Boolean de gateways online a nivel fila (puede venir como string "TRUE"/"FALSE")
     if "all_gateways_online" in df_work.columns:
@@ -264,6 +279,7 @@ with tab2:
         s2 = s.fillna(False).astype(bool)
         return bool(s2.all())
 
+    # --- Métricas por ganadería (ESPERADAS)
     ranch_status = grp.agg(
         n_dispositivos=("device_id", "nunique"),
         n_ok=("dispositivo_ok", "sum"),
@@ -275,13 +291,20 @@ with tab2:
         Region=("Region", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
     ).reset_index()
 
+    # --- NUEVO: Métricas por ganadería (RECIBIDAS)
+    ranch_status_rec = grp.agg(
+        n_dispositivos=("device_id", "nunique"),
+        n_ok_rec=("dispositivo_ok_rec", "sum"),
+        pct_ok_rec=("dispositivo_ok_rec", lambda s: (100.0 * s.sum() / max(1, s.shape[0]))),
+    ).reset_index()
+
     # =========================
     # Reglas de clasificación (CORREGIDO)
     # =========================
-    # Regla de OK de ganadería (SOLO por % de dispositivos OK; sin antenas)
+    # Regla de OK de ganadería (SOLO por % de dispositivos OK; sin antenas) — ESPERADAS
     ranch_status["ranch_ok"] = ranch_status["pct_ok"] >= 70.0
 
-    # Clasificación de fallo (SOLO por % de dispositivos OK)
+    # Clasificación de fallo (SOLO por % de dispositivos OK) — ESPERADAS
     def clasificar_fallo(row):
         if row["pct_ok"] < 70.0:
             return "Error 3: <70% dispositivos OK"
@@ -294,25 +317,53 @@ with tab2:
         lambda v: "Antena no conectada" if v is False else None
     )
 
+    # === NUEVO: Reglas de clasificación — RECIBIDAS
+    ranch_status_rec["ranch_ok_rec"] = ranch_status_rec["pct_ok_rec"] >= 70.0
+    # Etiquetas de error para RECIBIDAS (mismo criterio)
+    ranch_status_rec["error_categoria_rec"] = ranch_status_rec["pct_ok_rec"].apply(
+        lambda v: "Error 3 (recibidas): <70% dispositivos OK" if v < 70.0 else None
+    )
+
     # =========================
-    # KPIs generales
+    # KPIs generales (ESPERADAS)
     # =========================
     total_ranch = ranch_status.shape[0]
     n_ok_ranch = int(ranch_status["ranch_ok"].sum())
     n_no_ok_ranch = total_ranch - n_ok_ranch
 
+    st.markdown("##### KPIs (basado en **ESPERADAS**)")
     colk1, colk2, colk3, colk4 = st.columns(4)
     colk1.metric("Ganaderías (con filtros)", f"{total_ranch:,}")
     colk2.metric("Ganaderías OK", f"{n_ok_ranch:,}", delta=f"{(n_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
     colk3.metric("Ganaderías NO OK", f"{n_no_ok_ranch:,}", delta=f"{(n_no_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
 
-    # Desglose de errores (solo por % OK)
+    # Desglose de errores (solo por % OK, ESPERADAS)
     error_counts = ranch_status[~ranch_status["ranch_ok"]].groupby("error_categoria").size().reset_index(name="n")
     if error_counts.empty:
         colk4.metric("Fallo más común", "—")
     else:
         top_err = error_counts.sort_values("n", ascending=False).iloc[0]
         colk4.metric("Fallo más común", f"{top_err['error_categoria']}", delta=f"{int(top_err['n'])} ranchos")
+
+    # =========================
+    # NUEVO: KPIs generales (RECIBIDAS)
+    # =========================
+    total_ranch_rec = ranch_status_rec.shape[0]
+    n_ok_ranch_rec = int(ranch_status_rec["ranch_ok_rec"].sum())
+    n_no_ok_ranch_rec = total_ranch_rec - n_ok_ranch_rec
+
+    st.markdown("##### KPIs (basado en **RECIBIDAS**)")
+    colr1, colr2, colr3, colr4 = st.columns(4)
+    colr1.metric("Ganaderías (recibidas)", f"{total_ranch_rec:,}")
+    colr2.metric("Ganaderías OK (recibidas)", f"{n_ok_ranch_rec:,}", delta=f"{(n_ok_ranch_rec / total_ranch_rec * 100):.1f}%" if total_ranch_rec else "0%")
+    colr3.metric("Ganaderías NO OK (recibidas)", f"{n_no_ok_ranch_rec:,}", delta=f"{(n_no_ok_ranch_rec / total_ranch_rec * 100):.1f}%" if total_ranch_rec else "0%")
+
+    error_counts_rec = ranch_status_rec[~ranch_status_rec["ranch_ok_rec"]].groupby("error_categoria_rec").size().reset_index(name="n")
+    if error_counts_rec.empty:
+        colr4.metric("Fallo más común (recibidas)", "—")
+    else:
+        top_err_rec = error_counts_rec.sort_values("n", ascending=False).iloc[0]
+        colr4.metric("Fallo más común (recibidas)", f"{top_err_rec['error_categoria_rec']}", delta=f"{int(top_err_rec['n'])} ranchos")
 
     st.divider()
 
@@ -484,4 +535,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-
