@@ -235,7 +235,7 @@ SELECT
     END, 2
   )                                                              AS "No válida por filtro velocidad (%)",
 
-  -- Dispositivo OK (≥60% válidas vs esperadas)
+  -- Dispositivo OK (≥50% válidas vs esperadas)
   ROUND(
     CASE WHEN d."UplinksPerDay" > 0
          THEN COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100
@@ -243,16 +243,16 @@ SELECT
   )                                                              AS "Posición válida vs esperadas (%)",
   CASE
     WHEN d."UplinksPerDay" > 0
-         AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
+         AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 50
     THEN TRUE ELSE FALSE
-  END                                                            AS "Dispositivo OK (≥60% válidas vs esperadas)",
+  END                                                            AS "Dispositivo OK (≥50% válidas vs esperadas)",
 
   -- % dispositivos OK por ganadería (solo dispositivos)
   ROUND(
     100.0 * AVG(
       CASE
         WHEN d."UplinksPerDay" > 0
-             AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
+             AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 50
         THEN 1 ELSE 0
       END
     ) OVER (PARTITION BY r."Name")
@@ -264,51 +264,13 @@ SELECT
       100.0 * AVG(
         CASE
           WHEN d."UplinksPerDay" > 0
-               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 60
+               AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 50
           THEN 1 ELSE 0
         END
       ) OVER (PARTITION BY r."Name")
     ) >= 70
     THEN TRUE ELSE FALSE
   END                                                            AS "Ganadería OK (≥70% dispositivos OK)",
-
-  -- ===========================================================
-  -- NUEVAS MÉTRICAS BASADAS EN RECIBIDAS (LO MISMO PERO RECIBIDAS)
-  -- ===========================================================
-  ROUND(
-    CASE WHEN gp.recibidos_n > 0
-         THEN gp.validas_n::numeric / gp.recibidos_n * 100
-    END, 2
-  )                                                              AS "Posición válida vs recibidas (%)",
-
-  CASE
-    WHEN gp.recibidos_n > 0
-         AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
-    THEN TRUE ELSE FALSE
-  END                                                            AS "Dispositivo OK (≥60% válidas vs recibidas)",
-
-  ROUND(
-    100.0 * AVG(
-      CASE
-        WHEN gp.recibidos_n > 0
-             AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
-        THEN 1 ELSE 0
-      END
-    ) OVER (PARTITION BY r."Name")
-  , 2)                                                           AS "% dispositivos OK en ganadería (recibidas)",
-
-  CASE
-    WHEN (
-      100.0 * AVG(
-        CASE
-          WHEN gp.recibidos_n > 0
-               AND (gp.validas_n::numeric / gp.recibidos_n * 100) >= 60
-          THEN 1 ELSE 0
-        END
-      ) OVER (PARTITION BY r."Name")
-    ) >= 70
-    THEN TRUE ELSE FALSE
-  END                                                            AS "Ganadería OK (≥70% disp. OK - recibidas)",
 
   -- =============================
   -- INFO GATEWAYS (solo informativo)
@@ -330,14 +292,13 @@ SELECT
   END                                         AS horas_desde_ultimo_visto
 
 FROM base d
+JOIN "Ranches" r ON d."RanchId" = r."Id"
+JOIN "Customers" c ON r."CustomerId" = c."Id" AND c."Status" = 'active'
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
 LEFT JOIN gps_stats_full    gf  ON gf."DeviceId" = d."Id"
 LEFT JOIN gps_stats_periodo gp  ON gp.device_id = d."Id"
-JOIN "Ranches" r ON d."RanchId" = r."Id"
-LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
 LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
 LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
-WHERE (c."Status" = 'active' OR r."Name" IS NOT NULL)
 ORDER BY pct_recibidos_vs_esperados ASC NULLS LAST;
 
 

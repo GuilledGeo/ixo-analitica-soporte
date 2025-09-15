@@ -217,7 +217,7 @@ with tab1:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
 
 # =========================
-#  # TAB 2  (CORREGIDO: ranch_ok SOLO por % dispositivos OK)
+#  # TAB 2  (ranch_ok SOLO por % dispositivos OK, sin KPIs RECIBIDAS)
 # =========================
 with tab2:
     st.subheader(f"📈 Análisis Avanzado – {filtro_titulo}")
@@ -231,30 +231,18 @@ with tab2:
     # =========================
     df_work = df.copy()
 
-    # Columna dispositivo_ok (ESPERADAS): usa la tuya si existe; si no, la calculamos
-    if "Dispositivo OK (≥60% válidas vs esperadas)" in df_work.columns:
+    # Columna dispositivo_ok (ESPERADAS): prioriza bandera del query si existe (>=50%)
+    if "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
+        df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
+    elif "Dispositivo OK (≥60% válidas vs esperadas)" in df_work.columns:
+        # Compat: si aún llega la vieja, úsala
         df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥60% válidas vs esperadas)"].astype(bool)
     else:
         col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
         if col_pct_valid_vs_exp in df_work.columns:
-            df_work["dispositivo_ok"] = (pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce") >= 60).fillna(False)
+            df_work["dispositivo_ok"] = (pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce") >= 50).fillna(False)
         else:
             df_work["dispositivo_ok"] = False  # fallback conservador
-
-    # === NUEVO: Columna dispositivo_ok_rec (RECIBIDAS)
-    if "Dispositivo OK (≥60% válidas vs recibidas)" in df_work.columns:
-        df_work["dispositivo_ok_rec"] = df_work["Dispositivo OK (≥60% válidas vs recibidas)"].astype(bool)
-    elif "Posición válida vs recibidas (%)" in df_work.columns:
-        pct_rec = pd.to_numeric(df_work["Posición válida vs recibidas (%)"], errors="coerce")
-        df_work["dispositivo_ok_rec"] = (pct_rec >= 60).fillna(False)
-    elif {"Posición GPS válida (n)", "Mensajes recibidos (n)"} <= set(df_work.columns):
-        # Recalcular % recibidas si no viene hecho
-        valid_n = pd.to_numeric(df_work["Posición GPS válida (n)"], errors="coerce")
-        rec_n = pd.to_numeric(df_work["Mensajes recibidos (n)"], errors="coerce").replace({0: pd.NA})
-        pct_rec = (valid_n / rec_n) * 100
-        df_work["dispositivo_ok_rec"] = (pct_rec >= 60).fillna(False)
-    else:
-        df_work["dispositivo_ok_rec"] = False  # fallback conservador
 
     # Boolean de gateways online a nivel fila (puede venir como string "TRUE"/"FALSE")
     if "all_gateways_online" in df_work.columns:
@@ -291,13 +279,6 @@ with tab2:
         Region=("Region", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
     ).reset_index()
 
-    # --- NUEVO: Métricas por ganadería (RECIBIDAS)
-    ranch_status_rec = grp.agg(
-        n_dispositivos=("device_id", "nunique"),
-        n_ok_rec=("dispositivo_ok_rec", "sum"),
-        pct_ok_rec=("dispositivo_ok_rec", lambda s: (100.0 * s.sum() / max(1, s.shape[0]))),
-    ).reset_index()
-
     # =========================
     # Reglas de clasificación (CORREGIDO)
     # =========================
@@ -315,13 +296,6 @@ with tab2:
     # (Opcional) Etiqueta informativa de antenas, sin afectar OK/NO OK
     ranch_status["aviso_antena"] = ranch_status["all_gateways_online"].map(
         lambda v: "Antena no conectada" if v is False else None
-    )
-
-    # === NUEVO: Reglas de clasificación — RECIBIDAS
-    ranch_status_rec["ranch_ok_rec"] = ranch_status_rec["pct_ok_rec"] >= 70.0
-    # Etiquetas de error para RECIBIDAS (mismo criterio)
-    ranch_status_rec["error_categoria_rec"] = ranch_status_rec["pct_ok_rec"].apply(
-        lambda v: "Error 3 (recibidas): <70% dispositivos OK" if v < 70.0 else None
     )
 
     # =========================
@@ -345,31 +319,50 @@ with tab2:
         top_err = error_counts.sort_values("n", ascending=False).iloc[0]
         colk4.metric("Fallo más común", f"{top_err['error_categoria']}", delta=f"{int(top_err['n'])} ranchos")
 
-    # =========================
-    # NUEVO: KPIs generales (RECIBIDAS)
-    # =========================
-    total_ranch_rec = ranch_status_rec.shape[0]
-    n_ok_ranch_rec = int(ranch_status_rec["ranch_ok_rec"].sum())
-    n_no_ok_ranch_rec = total_ranch_rec - n_ok_ranch_rec
-
-    st.markdown("##### KPIs (basado en **RECIBIDAS**)")
-    colr1, colr2, colr3, colr4 = st.columns(4)
-    colr1.metric("Ganaderías (recibidas)", f"{total_ranch_rec:,}")
-    colr2.metric("Ganaderías OK (recibidas)", f"{n_ok_ranch_rec:,}", delta=f"{(n_ok_ranch_rec / total_ranch_rec * 100):.1f}%" if total_ranch_rec else "0%")
-    colr3.metric("Ganaderías NO OK (recibidas)", f"{n_no_ok_ranch_rec:,}", delta=f"{(n_no_ok_ranch_rec / total_ranch_rec * 100):.1f}%" if total_ranch_rec else "0%")
-
-    error_counts_rec = ranch_status_rec[~ranch_status_rec["ranch_ok_rec"]].groupby("error_categoria_rec").size().reset_index(name="n")
-    if error_counts_rec.empty:
-        colr4.metric("Fallo más común (recibidas)", "—")
-    else:
-        top_err_rec = error_counts_rec.sort_values("n", ascending=False).iloc[0]
-        colr4.metric("Fallo más común (recibidas)", f"{top_err_rec['error_categoria_rec']}", delta=f"{int(top_err_rec['n'])} ranchos")
-
     st.divider()
 
     # =========================
     # Visualizaciones
     # =========================
+    # --- Comparativa España vs LATAM (España = Country 'ES'; resto = LATAM)
+    st.markdown("#### 🇪🇸 vs 🌎 Comparativa España vs LATAM")
+
+    def region_group(country):
+        return "España" if str(country).strip().upper() == "ES" else "LATAM"
+
+    df_work["region_group"] = df_work["Country"].apply(region_group)
+    ranch_status["region_group"] = ranch_status["Country"].apply(region_group)
+
+    # % Dispositivos OK por región
+    device_ok_region = (
+        df_work.groupby("region_group")["dispositivo_ok"]
+        .mean().mul(100.0).rename("% dispositivos OK").reset_index()
+    )
+
+    # % Ganaderías OK por región
+    ranch_ok_region = (
+        ranch_status.groupby("region_group")["ranch_ok"]
+        .mean().mul(100.0).rename("% ganaderías OK").reset_index()
+    )
+
+    comp = device_ok_region.merge(ranch_ok_region, on="region_group", how="outer")
+    comp = comp[comp["region_group"].isin(["España", "LATAM"])].fillna(0)
+
+    if comp.empty:
+        st.info("No hay datos para España/LATAM con los filtros actuales.")
+    else:
+        df_comp_plot = comp.melt(id_vars="region_group", value_vars=["% dispositivos OK", "% ganaderías OK"])
+        fig_comp = px.bar(
+            df_comp_plot,
+            x="region_group", y="value", color="variable", barmode="group",
+            labels={"region_group": "Región", "value": "% OK", "variable": "Métrica"},
+            text="value", height=400,
+            color_discrete_map={"% dispositivos OK": "#1f77b4", "% ganaderías OK": "#ff7f0e"},
+        )
+        fig_comp.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig_comp.update_layout(yaxis=dict(range=[0, 100]))
+        st.plotly_chart(fig_comp, use_container_width=True)
+
     colv1, colv2 = st.columns([3, 2])
 
     with colv1:
@@ -433,15 +426,15 @@ with tab2:
     st.markdown("—")
 
     # =========================
-    # Dispositivos con Error 2 (no llegan al 60%)
+    # Dispositivos con Error 2 (no llegan al 50%)
     # =========================
-    st.markdown("#### 🚨 Dispositivos con <60% de válidas vs esperadas (Error 2)")
+    st.markdown("#### 🚨 Dispositivos con <50% de válidas vs esperadas (Error 2)")
 
     # Aseguramos columna de % válidas vs esperadas
     if "Posición válida vs esperadas (%)" in df_work.columns:
         pct_valid_col = "Posición válida vs esperadas (%)"
         df_work[pct_valid_col] = pd.to_numeric(df_work[pct_valid_col], errors="coerce")
-        df_error2 = df_work[df_work[pct_valid_col] < 60].copy()
+        df_error2 = df_work[df_work[pct_valid_col] < 50].copy()
     else:
         # Si no existe la columna, deducimos desde flags dispositivo_ok
         df_error2 = df_work[~df_work["dispositivo_ok"]].copy()
@@ -525,7 +518,6 @@ with tab2:
         )
     else:
         st.success("No hay ganaderías NO OK con los filtros actuales.")
-
 
 st.markdown("---")
 st.markdown(
