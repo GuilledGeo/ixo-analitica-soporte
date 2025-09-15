@@ -216,7 +216,9 @@ with tab1:
             else:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
 
-
+# =========================
+#  # TAB 2  (CORREGIDO: ranch_ok SOLO por % dispositivos OK)
+# =========================
 with tab2:
     st.subheader(f"📈 Análisis Avanzado – {filtro_titulo}")
 
@@ -266,25 +268,31 @@ with tab2:
         n_dispositivos=("device_id", "nunique"),
         n_ok=("dispositivo_ok", "sum"),
         pct_ok=("dispositivo_ok", lambda s: (100.0 * s.sum() / max(1, s.shape[0]))),
-        all_gateways_online=("all_gateways_online_bool", agg_bool_all),
+        all_gateways_online=("all_gateways_online_bool", agg_bool_all),  # informativo
         ranch_gateway_overall_status=("ranch_gateway_overall_status", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
         customer_name=("customer_name", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
         Country=("Country", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
         Region=("Region", lambda s: s.dropna().iloc[0] if s.dropna().size else None),
     ).reset_index()
 
-    # Regla de OK de ganadería
-    ranch_status["ranch_ok"] = (ranch_status["pct_ok"] >= 70.0) & (ranch_status["all_gateways_online"] == True)
+    # =========================
+    # Reglas de clasificación (CORREGIDO)
+    # =========================
+    # Regla de OK de ganadería (SOLO por % de dispositivos OK; sin antenas)
+    ranch_status["ranch_ok"] = ranch_status["pct_ok"] >= 70.0
 
-    # Clasificación de fallo (para NO OK)
+    # Clasificación de fallo (SOLO por % de dispositivos OK)
     def clasificar_fallo(row):
-        if row["all_gateways_online"] is False:
-            return "Error 1: Antena no conectada"
         if row["pct_ok"] < 70.0:
             return "Error 3: <70% dispositivos OK"
         return None
 
     ranch_status["error_categoria"] = ranch_status.apply(clasificar_fallo, axis=1)
+
+    # (Opcional) Etiqueta informativa de antenas, sin afectar OK/NO OK
+    ranch_status["aviso_antena"] = ranch_status["all_gateways_online"].map(
+        lambda v: "Antena no conectada" if v is False else None
+    )
 
     # =========================
     # KPIs generales
@@ -298,7 +306,7 @@ with tab2:
     colk2.metric("Ganaderías OK", f"{n_ok_ranch:,}", delta=f"{(n_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
     colk3.metric("Ganaderías NO OK", f"{n_no_ok_ranch:,}", delta=f"{(n_no_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
 
-    # Desglose de errores
+    # Desglose de errores (solo por % OK)
     error_counts = ranch_status[~ranch_status["ranch_ok"]].groupby("error_categoria").size().reset_index(name="n")
     if error_counts.empty:
         colk4.metric("Fallo más común", "—")
@@ -349,7 +357,8 @@ with tab2:
     cols_order = [
         "ranch_name", "customer_name", "Country", "Region",
         "n_dispositivos", "n_ok", "pct_ok",
-        "all_gateways_online", "ranch_gateway_overall_status",
+        "all_gateways_online", "ranch_gateway_overall_status",  # informativas
+        "aviso_antena",  # informativa
         "ranch_ok", "error_categoria"
     ]
     for c in cols_order:
@@ -441,7 +450,7 @@ with tab2:
 
         c1.metric("Dispositivos", f"{total_dev:,}")
         c2.metric("Dispositivos OK", f"{ok_dev:,}", delta=f"{pct_dev_ok:.1f}%")
-        c3.metric("Antenas online", "Sí" if gw_ok else "No")
+        c3.metric("Antenas online", "Sí" if gw_ok else "No")  # solo informativo
 
         # Tabla de dispositivos de la ganadería
         cols_ranch_dev = [
@@ -475,3 +484,4 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
+
