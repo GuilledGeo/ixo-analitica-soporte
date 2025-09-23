@@ -216,6 +216,10 @@ pip install -r requirements.txt
 #(5) Actualizar dash
 git add -f data/processed/consulta_01_2025-09-15_11-02_v01.csv
 
+git commit -m "actualizacion dash diaria"
+
+git push github main
+
 #(6) correr dash local
 
 streamlit run app/soporte_dashboard.py

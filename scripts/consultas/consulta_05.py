@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 consulta_05_detalle_por_mensaje – Últimos N días (por defecto 60) DETALLE POR MENSAJE,
-replicando las MISMAS columnas calculadas del query 24h, pero evaluadas por DÍA NATURAL
+replicando las MISMAS columnas calculadas del query 24h (DT01), pero evaluadas por DÍA NATURAL
 del propio mensaje. Filtro por ganadería.
 
 - Un registro por uplink de DeviceLocations.
 - Para cada uplink, se adjuntan las métricas/porcentajes del DISPOSITIVO en su día natural:
   "Mensajes recibidos (n)", "Posición GPS válida (%)", "Posición válida vs esperadas (%)",
-  "Dispositivo OK (≥60% válidas vs esperadas)", "% dispositivos OK en ganadería",
+  "Dispositivo OK (≥50% válidas vs esperadas)", "% dispositivos OK en ganadería",
   "Ganadería OK (≥70% dispositivos OK)", etc.
 - Incluye metadatos y gateways (igual que la 24h).
+- Filtra por clientes ACTIVOS (Customers.Status = 'active').
 
 Parámetros por defecto:
   days = 60
@@ -24,7 +25,7 @@ import os
 import inspect
 import traceback
 from datetime import datetime, timedelta, date
-from typing import Tuple, List
+from typing import List
 
 import pandas as pd
 from sqlalchemy import text
@@ -33,7 +34,7 @@ DEFAULT_DAYS = 60
 DEFAULT_RANCH_NAME = "Daniel Arias González"
 
 # ============================================================
-#  CTEs base + gateways (filtro por ganadería)
+#  CTEs base + gateways (filtro por ganadería, clientes activos)
 # ============================================================
 SQL_BASE_Y_GATEWAYS = """
 WITH active_devices AS (
@@ -58,6 +59,7 @@ base_all AS (
 ranches_filtrados AS (
   SELECT r."Id" AS ranch_id
   FROM "Ranches" r
+  JOIN "Customers" c ON c."Id" = r."CustomerId" AND c."Status" = 'active'
   WHERE UPPER(TRIM(r."Name")) = UPPER(TRIM(:ranch_name))
 ),
 base AS (
@@ -66,7 +68,7 @@ base AS (
   JOIN ranches_filtrados rf ON rf.ranch_id = b."RanchId"
 ),
 
--- Gateways agregado por rancho (como en 24h)
+-- Gateways agregado por rancho (como en DT01)
 gw_agg AS (
   SELECT
     rlg."RanchId" AS ranch_id,
@@ -142,6 +144,7 @@ gps_stats_full AS (
 
 # ============================================================
 #  SQL POR DÍA NATURAL: métricas diarias + registros (uplinks)
+#  Reglas DT01 (≥50% válidas vs esperadas)
 # ============================================================
 SQL_DIA_DETALLE = text(f"""
 {SQL_BASE_Y_GATEWAYS},
@@ -155,7 +158,7 @@ dl_dia AS (
     AND dl."Time" <  :fin
 ),
 
--- Métricas detalladas del DÍA por dispositivo (mismo bloque que 24h)
+-- Métricas detalladas del DÍA por dispositivo (idéntico a DT01 pero acotado al día)
 gps_stats_periodo AS (
   SELECT
     b."Id" AS device_id,
@@ -172,7 +175,7 @@ gps_stats_periodo AS (
   GROUP BY b."Id"
 ),
 
--- Métricas simples del DÍA (equivalente a gps_stats_24h_all)
+-- Métricas simples del DÍA (equivalente a gps_stats_24h_all de DT01)
 gps_stats_24h_all AS (
   SELECT
     b."Id" AS device_id,
@@ -183,7 +186,7 @@ gps_stats_24h_all AS (
   GROUP BY b."Id"
 ),
 
--- Derivados por dispositivo del DÍA (porcentajes igual que 24h, vs UplinksPerDay del propio dispositivo)
+-- Derivados por dispositivo del DÍA (porcentajes vs UplinksPerDay) — REGLA DT01 ≥50%
 derivados AS (
   SELECT
     b."Id" AS device_id,
@@ -192,7 +195,6 @@ derivados AS (
     gp.no_valida_calidad_gps_n, gp.no_valida_filtro_velocidad_n, gp.dias_con_datos,
     g24.total_mensajes_24h, g24.mensajes_sin_gps_24h,
 
-    -- %s como en query 24h
     ROUND(
       CASE WHEN b."UplinksPerDay" > 0
            THEN gp.recibidos_n::numeric / b."UplinksPerDay" * 100
@@ -218,22 +220,22 @@ derivados AS (
       END, 2
     ) AS pos_valida_vs_esperadas_pct,
 
-    -- Dispositivo OK
+    -- Dispositivo OK (≥50% válidas vs esperadas)
     CASE
       WHEN b."UplinksPerDay" > 0
-           AND (COALESCE(gp.validas_n,0)::numeric / b."UplinksPerDay" * 100) >= 60
+           AND (COALESCE(gp.validas_n,0)::numeric / b."UplinksPerDay" * 100) >= 50
       THEN TRUE ELSE FALSE
-    END AS device_ok_ge60
+    END AS device_ok_ge50
   FROM base b
   LEFT JOIN gps_stats_periodo gp ON gp.device_id = b."Id"
   LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = b."Id"
 ),
 
--- % dispositivos OK por ganadería (por DÍA)
+-- % dispositivos OK por ganadería (por DÍA) usando promedio por dispositivo (no por uplink)
 ok_ranch AS (
   SELECT
     r."Name" AS ranch_name,
-    ROUND( 100.0 * AVG( CASE WHEN derv.device_ok_ge60 THEN 1 ELSE 0 END ), 2 ) AS pct_ok_ranch
+    ROUND( 100.0 * AVG( CASE WHEN derv.device_ok_ge50 THEN 1 ELSE 0 END ), 2 ) AS pct_ok_ranch
   FROM derivados derv
   JOIN base b ON b."Id" = derv.device_id
   JOIN "Ranches" r ON b."RanchId" = r."Id"
@@ -306,9 +308,9 @@ SELECT
   ROUND( CASE WHEN gp.no_validas_n > 0 THEN gp.no_valida_filtro_velocidad_n::numeric / gp.no_validas_n * 100 END, 2 )
                                                  AS "No válida por filtro velocidad (%)",
 
-  -- KPI y banderas (como 24h pero por día del mensaje)
+  -- KPI y banderas (REGLAS DT01 por día del mensaje)
   derv.pos_valida_vs_esperadas_pct               AS "Posición válida vs esperadas (%)",
-  derv.device_ok_ge60                            AS "Dispositivo OK (≥60% válidas vs esperadas)",
+  derv.device_ok_ge50                            AS "Dispositivo OK (≥50% válidas vs esperadas)",
   ok.pct_ok_ranch                                AS "% dispositivos OK en ganadería",
   okf.ranch_ok_ge70                              AS "Ganadería OK (≥70% dispositivos OK)",
 
@@ -345,7 +347,7 @@ SELECT
 
 FROM base b
 JOIN "Ranches" r  ON b."RanchId" = r."Id"
-LEFT JOIN "Customers" c ON r."CustomerId" = c."Id"
+JOIN "Customers" c ON r."CustomerId" = c."Id" AND c."Status" = 'active'
 
 LEFT JOIN gps_stats_periodo gp ON gp.device_id = b."Id"
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = b."Id"
@@ -354,11 +356,10 @@ LEFT JOIN ok_ranch ok          ON ok.ranch_name = r."Name"
 LEFT JOIN ok_ranch_flag okf    ON okf.ranch_name = r."Name"
 
 LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
-LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
+LEFT JOIN gw_latest  gl ON gl.rn = 1 AND gl.ranch_id = r."Id"
 LEFT JOIN gps_stats_full gf ON gf."DeviceId" = b."Id"
 
--- Mensajes del día (uno por fila)
-LEFT JOIN dl_dia dl ON dl."DeviceId" = b."Id"
+LEFT JOIN dl_dia dl ON dl."DeviceId" = b."Id"  -- Mensajes del día (uno por fila)
 
 ORDER BY dl."Time" ASC, b."Id" ASC;
 """)
@@ -390,8 +391,7 @@ def ejecutar(
 ) -> pd.DataFrame:
     """
     Devuelve UN REGISTRO POR MENSAJE de los últimos N días naturales (por defecto 60),
-    para la ganadería dada, con TODAS las columnas calculadas del query 24h
-    (calculadas para el día natural del propio mensaje) + metadatos y gateways.
+    para la ganadería dada, con REGLAS DT01 (≥50%) + metadatos y gateways.
     """
     try:
         try:
