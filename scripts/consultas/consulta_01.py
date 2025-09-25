@@ -5,9 +5,9 @@ Con filtro severo: Animal activo + Device shipped (RIGHT JOIN sobre Animals)
 
 Incluye:
 - "Posición válida vs esperadas (%)"
-- "Dispositivo OK (>60% válidas vs esperadas)"
+- "Dispositivo OK (>50% válidas vs esperadas)"
 - "% dispositivos OK en ganadería"
-- "Ganadería OK (>70% dispositivos OK)"
+- "Ganadería OK (>50% dispositivos OK)"
 - Campos de Ranches: Country, Region
 
 Notas:
@@ -258,7 +258,7 @@ SELECT
     ) OVER (PARTITION BY r."Name")
   , 2)                                                           AS "% dispositivos OK en ganadería",
 
-  -- Ganadería OK (≥70% dispositivos OK) — SIN antenas
+  -- Ganadería OK (≥50% dispositivos OK) — SIN antenas
   CASE
     WHEN (
       100.0 * AVG(
@@ -268,9 +268,9 @@ SELECT
           THEN 1 ELSE 0
         END
       ) OVER (PARTITION BY r."Name")
-    ) >= 70
+    ) >= 50
     THEN TRUE ELSE FALSE
-  END                                                            AS "Ganadería OK (≥70% dispositivos OK)",
+  END                                                            AS "Ganadería OK (≥50% dispositivos OK)",
 
   -- =============================
   -- INFO GATEWAYS (solo informativo)

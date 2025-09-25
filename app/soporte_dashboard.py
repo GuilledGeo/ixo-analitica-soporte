@@ -234,9 +234,9 @@ with tab2:
     # Columna dispositivo_ok (ESPERADAS): prioriza bandera del query si existe (>=50%)
     if "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
         df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
-    elif "Dispositivo OK (≥60% válidas vs esperadas)" in df_work.columns:
+    elif "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
         # Compat: si aún llega la vieja, úsala
-        df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥60% válidas vs esperadas)"].astype(bool)
+        df_work["dispositivo_ok"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
     else:
         col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
         if col_pct_valid_vs_exp in df_work.columns:
@@ -283,12 +283,12 @@ with tab2:
     # Reglas de clasificación (CORREGIDO)
     # =========================
     # Regla de OK de ganadería (SOLO por % de dispositivos OK; sin antenas) — ESPERADAS
-    ranch_status["ranch_ok"] = ranch_status["pct_ok"] >= 70.0
+    ranch_status["ranch_ok"] = ranch_status["pct_ok"] >= 50.0
 
     # Clasificación de fallo (SOLO por % de dispositivos OK) — ESPERADAS
     def clasificar_fallo(row):
-        if row["pct_ok"] < 70.0:
-            return "Error 3: <70% dispositivos OK"
+        if row["pct_ok"] < 50.0:
+            return "Error 3: <50% dispositivos OK"
         return None
 
     ranch_status["error_categoria"] = ranch_status.apply(clasificar_fallo, axis=1)
