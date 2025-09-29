@@ -16,39 +16,38 @@ st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositi
 # ==============================
 #   Normalización de países
 # ==============================
+# ==============================
+#   Normalización SOLO tus países
+# ==============================
+
+# Alias detectados en tu dataset (-> ISO-2 válidos)
 ISO_ALIAS_MAP = {
-    # Alias no estándar que aparecen en tu dataset:
-    "UR": "UY",   # Uruguay
-    "CH": "CL",   # Chile (si fuese Suiza, cambia a "CH": "CH")
+    "UR": "UY",  # Uruguay
+    "CH": "CL",  # CH en tus datos = Chile (si fuese Suiza, usa "CH": "CH")
 }
 
-# ISO-3 → ISO-2 más comunes (LATAM + Europa y adyacentes)
+# ISO-3 -> ISO-2 (solo los que te pueden aparecer de tu lista)
 ISO3_TO_ISO2 = {
-    # LATAM
-    "ARG": "AR", "BOL": "BO", "BRA": "BR", "CHL": "CL", "COL": "CO", "CRI": "CR",
-    "CUB": "CU", "DOM": "DO", "ECU": "EC", "SLV": "SV", "GTM": "GT", "HND": "HN",
-    "MEX": "MX", "NIC": "NI", "PAN": "PA", "PRY": "PY", "PER": "PE", "URY": "UY",
-    "VEN": "VE", "PRI": "PR", "BLZ": "BZ", "GUY": "GY", "SUR": "SR",
-    # Europa
-    "ALB":"AL","AND":"AD","AUT":"AT","BLR":"BY","BEL":"BE","BIH":"BA","BGR":"BG",
-    "HRV":"HR","CYP":"CY","CZE":"CZ","DNK":"DK","EST":"EE","FIN":"FI","FRA":"FR",
-    "DEU":"DE","GIB":"GI","GRC":"GR","HUN":"HU","ISL":"IS","IRL":"IE","ITA":"IT",
-    "LVA":"LV","LIE":"LI","LTU":"LT","LUX":"LU","MLT":"MT","MDA":"MD","MCO":"MC",
-    "MNE":"ME","NLD":"NL","MKD":"MK","NOR":"NO","POL":"PL","PRT":"PT","ROU":"RO",
-    "RUS":"RU","SMR":"SM","SRB":"RS","SVK":"SK","SVN":"SI","ESP":"ES","SWE":"SE",
-    "CHE":"CH","TUR":"TR","UKR":"UA","GBR":"GB","VAT":"VA","XKX":"XK"  # XK Kosovo (no ISO oficial)
+    "ARG": "AR",
+    "BOL": "BO",
+    "BRA": "BR",
+    "CHL": "CL",
+    "COL": "CO",
+    "DOM": "DO",
+    "ECU": "EC",
+    "ESP": "ES",
+    "HRV": "HR",
+    "MNE": "ME",
+    "PRI": "PR",
+    "ROU": "RO",
+    "URY": "UY",
+    "VEN": "VE",
 }
 
-# Conjuntos de países en ISO-2
-LATAM_ISO2 = {
-    "AR","BO","BR","CL","CO","CR","CU","DO","EC","SV","GT","HN","MX","NI","PA","PY","PE","UY","VE",
-    "PR","BZ","GY","SR"  # Caribe y otros LATAM frecuentes en datos
-}
-EUROPE_ISO2 = {
-    "AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GI","GR","HU","IS","IE",
-    "IT","LV","LI","LT","LU","MT","MD","MC","ME","NL","MK","NO","PL","PT","RO","RU","SM","RS","SK","SI",
-    "ES","SE","CH","TR","UA","GB","VA","XK"
-}
+# Conjuntos de región (ISO-2)
+LATAM_ISO2  = {"AR","BO","BR","CL","CO","DO","EC","PR","UY","VE"}
+EUROPE_ISO2 = {"ES","HR","ME","RO"}
+
 
 def normalize_country(code: str) -> str | None:
     """Devuelve ISO-2 o None a partir del valor original (acepta ISO-2/ISO-3 y alias)."""
