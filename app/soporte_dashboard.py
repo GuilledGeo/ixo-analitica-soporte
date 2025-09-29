@@ -13,6 +13,67 @@ from src.features.consulta_1 import aplicar_clasificaciones_temporales
 
 st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositivos")
 
+# ==============================
+#   Normalización de países
+# ==============================
+ISO_ALIAS_MAP = {
+    # Alias no estándar que aparecen en tu dataset:
+    "UR": "UY",   # Uruguay
+    "CH": "CL",   # Chile (si fuese Suiza, cambia a "CH": "CH")
+}
+
+# ISO-3 → ISO-2 más comunes (LATAM + Europa y adyacentes)
+ISO3_TO_ISO2 = {
+    # LATAM
+    "ARG": "AR", "BOL": "BO", "BRA": "BR", "CHL": "CL", "COL": "CO", "CRI": "CR",
+    "CUB": "CU", "DOM": "DO", "ECU": "EC", "SLV": "SV", "GTM": "GT", "HND": "HN",
+    "MEX": "MX", "NIC": "NI", "PAN": "PA", "PRY": "PY", "PER": "PE", "URY": "UY",
+    "VEN": "VE", "PRI": "PR", "BLZ": "BZ", "GUY": "GY", "SUR": "SR",
+    # Europa
+    "ALB":"AL","AND":"AD","AUT":"AT","BLR":"BY","BEL":"BE","BIH":"BA","BGR":"BG",
+    "HRV":"HR","CYP":"CY","CZE":"CZ","DNK":"DK","EST":"EE","FIN":"FI","FRA":"FR",
+    "DEU":"DE","GIB":"GI","GRC":"GR","HUN":"HU","ISL":"IS","IRL":"IE","ITA":"IT",
+    "LVA":"LV","LIE":"LI","LTU":"LT","LUX":"LU","MLT":"MT","MDA":"MD","MCO":"MC",
+    "MNE":"ME","NLD":"NL","MKD":"MK","NOR":"NO","POL":"PL","PRT":"PT","ROU":"RO",
+    "RUS":"RU","SMR":"SM","SRB":"RS","SVK":"SK","SVN":"SI","ESP":"ES","SWE":"SE",
+    "CHE":"CH","TUR":"TR","UKR":"UA","GBR":"GB","VAT":"VA","XKX":"XK"  # XK Kosovo (no ISO oficial)
+}
+
+# Conjuntos de países en ISO-2
+LATAM_ISO2 = {
+    "AR","BO","BR","CL","CO","CR","CU","DO","EC","SV","GT","HN","MX","NI","PA","PY","PE","UY","VE",
+    "PR","BZ","GY","SR"  # Caribe y otros LATAM frecuentes en datos
+}
+
+EUROPE_ISO2 = {
+    "AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GI","GR","HU","IS","IE",
+    "IT","LV","LI","LT","LU","MT","MD","MC","ME","NL","MK","NO","PL","PT","RO","RU","SM","RS","SK","SI",
+    "ES","SE","CH","TR","UA","GB","VA","XK"
+}
+
+def normalize_country(code: str) -> str | None:
+    if pd.isna(code):
+        return None
+    c = str(code).strip().upper()
+    if not c:
+        return None
+    # Alias del dataset
+    if c in ISO_ALIAS_MAP:
+        c = ISO_ALIAS_MAP[c]
+    # ISO-3 -> ISO-2 si aplica
+    if len(c) == 3 and c in ISO3_TO_ISO2:
+        c = ISO3_TO_ISO2[c]
+    return c
+
+def infer_region_from_iso2(c_iso2: str | None) -> str:
+    if c_iso2 is None:
+        return "Desconocido"
+    if c_iso2 in LATAM_ISO2:
+        return "LATAM"
+    if c_iso2 in EUROPE_ISO2:
+        return "Europa"
+    return "Otros"
+
 # === Cargar CSV más reciente ===
 CARPETA = "data/processed"
 PREFIJO = "consulta_01"
@@ -38,6 +99,16 @@ if ruta_csv:
 
     st.title(f"📱Dashboard Soporte consulta últimas 24h: {fecha_hora_formateada}")
     df_original = pd.read_csv(ruta_csv)
+
+    # Normalización de Country y región
+    if "Country" in df_original.columns:
+        df_original["Country_norm"] = df_original["Country"].apply(normalize_country)
+        df_original["Region_norm"] = df_original["Country_norm"].apply(infer_region_from_iso2)
+    else:
+        df_original["Country_norm"] = None
+        df_original["Region_norm"] = "Desconocido"
+
+    # Mantén tus clasificaciones existentes
     df_original = aplicar_clasificaciones_temporales(df_original)
     st.success(f"✅ Datos cargados de: `{nombre_archivo}`")
 else:
@@ -46,7 +117,7 @@ else:
 
 # === Filtros ===
 st.markdown("### 🎛️ Filtros de visualización avanzados")
-colf1, colf2, colf3 = st.columns(3)
+colf1, colf2, colf3, colf4 = st.columns(4)
 
 cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
 modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
@@ -60,18 +131,27 @@ estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().to
 estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
 estado = colf3.selectbox("Estado de conexión", ["Todos"] + estados_ordenados, index=0)
 
+region = colf4.selectbox("Región (Country)", ["Todos", "LATAM", "Europa", "Otros", "Desconocido"], index=0)
+
 # === Aplicar filtros ===
 df = df_original.copy()
 filtro_titulo = "Todos los clientes"
+
 if cliente != "Todos":
     df = df[df["customer_name"] == cliente]
     filtro_titulo = cliente
+
 if modelo != "Todos":
     df = df[df["Model"] == modelo]
+
 if estado != "Todos":
     df = df[df["clasificacion_conexion"] == estado]
 
-# Ordenar por fecha
+# Filtro por región (basado en Country_norm -> Region_norm)
+if region != "Todos":
+    df = df[df["Region_norm"] == region]
+
+# Orden por fecha de último mensaje
 if "ultimo_mensaje_recibido" in df.columns:
     df["ultimo_mensaje_recibido"] = pd.to_datetime(df["ultimo_mensaje_recibido"], errors="coerce")
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
@@ -91,7 +171,7 @@ col3.metric("Sin conexión", f"{sin_conexion:,}", delta=f"{(sin_conexion/total)*
 
 col4, col5, col6 = st.columns(3)
 bateria_media = df["porcentaje_bateria"].mean() if "porcentaje_bateria" in df.columns and not df.empty else None
-col4.metric("Batería media (%)", f"{bateria_media:.1f}%" if bateria_media else "N/A")
+col4.metric("Batería media (%)", f"{bateria_media:.1f}%" if bateria_media is not None else "N/A")
 
 if "pct_recibidos_vs_esperados" in df.columns and not df.empty:
     bajos_ratio = df[(df["pct_recibidos_vs_esperados"] > 0) & (df["pct_recibidos_vs_esperados"] < 0.25)].shape[0]
