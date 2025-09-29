@@ -44,7 +44,6 @@ LATAM_ISO2 = {
     "AR","BO","BR","CL","CO","CR","CU","DO","EC","SV","GT","HN","MX","NI","PA","PY","PE","UY","VE",
     "PR","BZ","GY","SR"  # Caribe y otros LATAM frecuentes en datos
 }
-
 EUROPE_ISO2 = {
     "AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GI","GR","HU","IS","IE",
     "IT","LV","LI","LT","LU","MT","MD","MC","ME","NL","MK","NO","PL","PT","RO","RU","SM","RS","SK","SI",
@@ -52,27 +51,32 @@ EUROPE_ISO2 = {
 }
 
 def normalize_country(code: str) -> str | None:
+    """Devuelve ISO-2 o None a partir del valor original (acepta ISO-2/ISO-3 y alias)."""
     if pd.isna(code):
         return None
     c = str(code).strip().upper()
     if not c:
         return None
-    # Alias del dataset
+    # Alias del dataset (p.ej., UR→UY; CH→CL si es Chile)
     if c in ISO_ALIAS_MAP:
         c = ISO_ALIAS_MAP[c]
-    # ISO-3 -> ISO-2 si aplica
+    # ISO-3 -> ISO-2
     if len(c) == 3 and c in ISO3_TO_ISO2:
         c = ISO3_TO_ISO2[c]
-    return c
+    # Si ya es ISO-2, lo dejamos tal cual; si no, lo marcamos como desconocido (None)
+    if len(c) == 2:
+        return c
+    return None
 
 def infer_region_from_iso2(c_iso2: str | None) -> str:
+    """Clasifica en LATAM / Europa / Desconocido (sin 'Otros')."""
     if c_iso2 is None:
         return "Desconocido"
     if c_iso2 in LATAM_ISO2:
         return "LATAM"
     if c_iso2 in EUROPE_ISO2:
         return "Europa"
-    return "Otros"
+    return "Desconocido"  # Todo lo demás es desconocido para tu caso de uso
 
 # === Cargar CSV más reciente ===
 CARPETA = "data/processed"
@@ -104,9 +108,19 @@ if ruta_csv:
     if "Country" in df_original.columns:
         df_original["Country_norm"] = df_original["Country"].apply(normalize_country)
         df_original["Region_norm"] = df_original["Country_norm"].apply(infer_region_from_iso2)
+        # Fuerza categorías válidas para evitar valores raros
+        df_original["Region_norm"] = pd.Categorical(
+            df_original["Region_norm"],
+            categories=["LATAM", "Europa", "Desconocido"],
+            ordered=False
+        )
     else:
         df_original["Country_norm"] = None
-        df_original["Region_norm"] = "Desconocido"
+        df_original["Region_norm"] = pd.Categorical(
+            ["Desconocido"] * len(df_original),
+            categories=["LATAM", "Europa", "Desconocido"],
+            ordered=False
+        )
 
     # Mantén tus clasificaciones existentes
     df_original = aplicar_clasificaciones_temporales(df_original)
@@ -131,7 +145,8 @@ estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().to
 estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
 estado = colf3.selectbox("Estado de conexión", ["Todos"] + estados_ordenados, index=0)
 
-region = colf4.selectbox("Región (Country)", ["Todos", "LATAM", "Europa", "Otros", "Desconocido"], index=0)
+# Solo las 4 opciones solicitadas
+region = colf4.selectbox("Región (Country)", ["Todos", "LATAM", "Europa", "Desconocido"], index=0)
 
 # === Aplicar filtros ===
 df = df_original.copy()
@@ -147,9 +162,10 @@ if modelo != "Todos":
 if estado != "Todos":
     df = df[df["clasificacion_conexion"] == estado]
 
-# Filtro por región (basado en Country_norm -> Region_norm)
+# Filtro por región (estricto a las 3 categorías)
 if region != "Todos":
-    df = df[df["Region_norm"] == region]
+    # Aseguramos comparación limpia por si hubiese espacios accidentales
+    df = df[df["Region_norm"].astype(str).str.strip() == region]
 
 # Orden por fecha de último mensaje
 if "ultimo_mensaje_recibido" in df.columns:
