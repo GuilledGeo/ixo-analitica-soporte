@@ -220,6 +220,8 @@ git commit -m "actualizacion dash diaria"
 
 git push github main
 
+git push --force github main
+
 #(6) correr dash local
 
 streamlit run app/soporte_dashboard.py
