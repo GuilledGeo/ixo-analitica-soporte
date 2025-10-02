@@ -16,63 +16,46 @@ st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositi
 # ==============================
 #   Normalización de países
 # ==============================
-# Alias detectados en tu dataset (-> ISO-2 válidos)
 ISO_ALIAS_MAP = {
     "UR": "UY",  # Uruguay
-    "CH": "CL",  # CH en tus datos = Chile (si fuese Suiza, usa "CH": "CH")
+    "CH": "CL",  # En tus datos "CH"=Chile
 }
 
-# ISO-3 -> ISO-2 (solo los que te pueden aparecer de tu lista)
 ISO3_TO_ISO2 = {
-    "ARG": "AR",
-    "BOL": "BO",
-    "BRA": "BR",
-    "CHL": "CL",
-    "COL": "CO",
-    "DOM": "DO",
-    "ECU": "EC",
-    "ESP": "ES",
-    "HRV": "HR",
-    "MNE": "ME",
-    "PRI": "PR",
-    "ROU": "RO",
-    "URY": "UY",
-    "VEN": "VE",
+    "ARG": "AR","BOL": "BO","BRA": "BR","CHL": "CL","COL": "CO","DOM": "DO",
+    "ECU": "EC","ESP": "ES","HRV": "HR","MNE": "ME","PRI": "PR","ROU": "RO",
+    "URY": "UY","VEN": "VE",
 }
 
-# Conjuntos de región (ISO-2)
 LATAM_ISO2  = {"AR","BO","BR","CL","CO","DO","EC","PR","UY","VE"}
 EUROPE_ISO2 = {"ES","HR","ME","RO"}
 
 def normalize_country(code: str) -> str | None:
-    """Devuelve ISO-2 o None a partir del valor original (acepta ISO-2/ISO-3 y alias)."""
     if pd.isna(code):
         return None
     c = str(code).strip().upper()
     if not c:
         return None
-    # Alias del dataset (p.ej., UR→UY; CH→CL si es Chile)
     if c in ISO_ALIAS_MAP:
         c = ISO_ALIAS_MAP[c]
-    # ISO-3 -> ISO-2
     if len(c) == 3 and c in ISO3_TO_ISO2:
         c = ISO3_TO_ISO2[c]
-    # Si ya es ISO-2, lo dejamos tal cual; si no, lo marcamos como desconocido (None)
     if len(c) == 2:
         return c
     return None
 
 def infer_region_from_iso2(c_iso2: str | None) -> str:
-    """Clasifica en LATAM / Europa / Desconocido (sin 'Otros')."""
     if c_iso2 is None:
         return "Desconocido"
     if c_iso2 in LATAM_ISO2:
         return "LATAM"
     if c_iso2 in EUROPE_ISO2:
         return "Europa"
-    return "Desconocido"  # Todo lo demás es desconocido para tu caso de uso
+    return "Desconocido"
 
-# === Cargar CSV más reciente ===
+# ==============================
+#  Cargar CSV más reciente
+# ==============================
 CARPETA = "data/processed"
 PREFIJO = "consulta_01"
 
@@ -98,7 +81,7 @@ if ruta_csv:
     st.title(f"📱Dashboard Soporte consulta últimas 24h: {fecha_hora_formateada}")
     df_original = pd.read_csv(ruta_csv)
 
-    # ===== Normalizar fechas a UTC tz-aware UNA SOLA VEZ =====
+    # ===== Fechas a UTC tz-aware =====
     DATE_COLS_UTC = [
         "ultimo_mensaje_recibido",
         "gateway_last_seen",
@@ -110,27 +93,23 @@ if ruta_csv:
         if col in df_original.columns:
             df_original[col] = pd.to_datetime(df_original[col], errors="coerce", utc=True)
 
-    # Normalización de Country y región
+    # País / región
     if "Country" in df_original.columns:
         df_original["Country_norm"] = df_original["Country"].apply(normalize_country)
         df_original["Region_norm"] = df_original["Country_norm"].apply(infer_region_from_iso2)
         df_original["Region_norm"] = pd.Categorical(
-            df_original["Region_norm"],
-            categories=["LATAM", "Europa", "Desconocido"],
-            ordered=False
+            df_original["Region_norm"], categories=["LATAM", "Europa", "Desconocido"], ordered=False
         )
     else:
         df_original["Country_norm"] = None
         df_original["Region_norm"] = pd.Categorical(
-            ["Desconocido"] * len(df_original),
-            categories=["LATAM", "Europa", "Desconocido"],
-            ordered=False
+            ["Desconocido"] * len(df_original), categories=["LATAM", "Europa", "Desconocido"], ordered=False
         )
 
-    # Clasificaciones temporales
+    # Clasificaciones propias previas (si las tienes)
     df_original = aplicar_clasificaciones_temporales(df_original)
 
-    # ===== Re-normalizar fechas tras posibles cambios del paso anterior =====
+    # Re-normalizar fechas (por si la función anterior cambió tipos)
     for col in DATE_COLS_UTC:
         if col in df_original.columns:
             df_original[col] = pd.to_datetime(df_original[col], errors="coerce", utc=True)
@@ -140,56 +119,146 @@ else:
     st.error("❌ No se encontró ningún archivo CSV procesado.")
     st.stop()
 
-# === Filtros ===
+# ==============================
+#  Normalización de Estado de conexión
+# ==============================
+# Lista canónica (y orden que quieres en filtros/gráficas)
+ESTADOS_CANONICOS = [
+    "Conectado hoy",
+    "Conexión 24-48h",
+    "Conexión 48-72h",
+    "Conexión 3-7 días",
+    "Conexión 7-15 días",
+    "Conexión 15 días - 1 mes",
+    "Conexión 1-3 meses",
+    "Conexión >3  meses",
+]
+
+def clean_text(s):
+    if pd.isna(s):
+        return None
+    return " ".join(str(s).strip().split()).lower()
+
+# Variantes → canónico (por si llegan con espacios extra o pequeñas variaciones)
+VARIANTES_ESTADOS = {
+    "conectado hoy": "Conectado hoy",
+    "conexion 24-48h": "Conexión 24-48h",
+    "conexión 24-48h": "Conexión 24-48h",
+    "conexion 48-72h": "Conexión 48-72h",
+    "conexión 48-72h": "Conexión 48-72h",
+    "conexion 3-7 dias": "Conexión 3-7 días",
+    "conexión 3-7 días": "Conexión 3-7 días",
+    "conexion 7-15 dias": "Conexión 7-15 días",
+    "conexión 7-15 días": "Conexión 7-15 días",
+    "conexion 15 dias - 1 mes": "Conexión 15 días - 1 mes",
+    "conexión 15 días - 1 mes": "Conexión 15 días - 1 mes",
+    "conexion 1-3 meses": "Conexión 1-3 meses",
+    "conexión 1-3 meses": "Conexión 1-3 meses",
+    "conexion >3 meses": "Conexión >3  meses",
+    "conexión >3 meses": "Conexión >3  meses",
+    "conexion >3  meses": "Conexión >3  meses",
+    "conexión >3  meses": "Conexión >3  meses",
+}
+
+def estado_desde_ts(ts: pd.Timestamp, now_utc: pd.Timestamp) -> str:
+    """Calcula estado a partir de la última comunicación."""
+    if pd.isna(ts):
+        return "Conexión >3  meses"
+    delta = now_utc - ts
+    if delta <= pd.Timedelta(days=1):
+        return "Conectado hoy"
+    if delta <= pd.Timedelta(days=2):
+        return "Conexión 24-48h"
+    if delta <= pd.Timedelta(days=3):
+        return "Conexión 48-72h"
+    if delta <= pd.Timedelta(days=7):
+        return "Conexión 3-7 días"
+    if delta <= pd.Timedelta(days=15):
+        return "Conexión 7-15 días"
+    if delta <= pd.Timedelta(days=30):
+        return "Conexión 15 días - 1 mes"
+    if delta <= pd.Timedelta(days=90):
+        return "Conexión 1-3 meses"
+    return "Conexión >3  meses"
+
+# Construimos una columna estandarizada para filtrar/visualizar SIEMPRE:
+now_utc = pd.Timestamp.now(tz="UTC")
+if "ultimo_mensaje_recibido" in df_original.columns:
+    ts_last = pd.to_datetime(df_original["ultimo_mensaje_recibido"], errors="coerce", utc=True)
+else:
+    ts_last = pd.Series(pd.NaT, index=df_original.index)
+
+# 1) Intentar usar la clasificación que venga, normalizándola
+if "clasificacion_conexion" in df_original.columns:
+    tmp = df_original["clasificacion_conexion"].apply(clean_text).map(VARIANTES_ESTADOS).fillna(pd.NA)
+else:
+    tmp = pd.Series(pd.NA, index=df_original.index)
+
+# 2) Donde falte, recalcular desde ts
+df_original["estado_conexion_std"] = tmp
+faltan = df_original["estado_conexion_std"].isna()
+df_original.loc[faltan, "estado_conexion_std"] = [
+    estado_desde_ts(t, now_utc) for t in ts_last[faltan]
+]
+
+# Forzar categoría ordenada
+df_original["estado_conexion_std"] = pd.Categorical(
+    df_original["estado_conexion_std"],
+    categories=ESTADOS_CANONICOS,
+    ordered=True
+)
+
+# ==============================
+#  Filtros (multiselección)
+# ==============================
 st.markdown("### 🎛️ Filtros de visualización avanzados")
 colf1, colf2, colf3, colf4 = st.columns(4)
 
-cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
-modelo = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
+clientes_opts = sorted(df_original["customer_name"].dropna().unique().tolist())
+modelos_opts  = sorted(df_original["Model"].dropna().unique().tolist())
+# Mostramos SIEMPRE todos los estados canónicos en el selector
+estados_opts  = ESTADOS_CANONICOS
+regiones_opts = ["LATAM", "Europa", "Desconocido"]
 
-orden_personalizado = [
-    "Conectado hoy", "Conexión 24-48h", "Conexión 48-72h",
-    "Conexión 3-7 días", "Conexión 7-15 días",
-    "Conexión 15 días - 1 mes", "Conexión 1-3 meses", "Conexión >3  meses"
-]
-estados_disponibles = df_original["clasificacion_conexion"].dropna().unique().tolist()
-estados_ordenados = [estado for estado in orden_personalizado if estado in estados_disponibles]
-estado = colf3.selectbox("Estado de conexión", ["Todos"] + estados_ordenados, index=0)
+clientes_sel = colf1.multiselect("Cliente (uno o varios)", clientes_opts, default=[])
+modelos_sel  = colf2.multiselect("Modelo de dispositivo", modelos_opts, default=[])
+estados_sel  = colf3.multiselect("Estado de conexión (multi)", estados_opts, default=[])
+regiones_sel = colf4.multiselect("Región (Country)", regiones_opts, default=[])
 
-# Solo las 4 opciones solicitadas
-region = colf4.selectbox("Región (Country)", ["Todos", "LATAM", "Europa", "Desconocido"], index=0)
-
-# === Aplicar filtros ===
+# Aplicar filtros
 df = df_original.copy()
-filtro_titulo = "Todos los clientes"
 
-if cliente != "Todos":
-    df = df[df["customer_name"] == cliente]
-    filtro_titulo = cliente
+# Título según clientes
+if not clientes_sel:
+    filtro_titulo = "Todos los clientes"
+elif len(clientes_sel) == 1:
+    filtro_titulo = clientes_sel[0]
+else:
+    filtro_titulo = f"{len(clientes_sel)} clientes"
 
-if modelo != "Todos":
-    df = df[df["Model"] == modelo]
+if clientes_sel:
+    df = df[df["customer_name"].isin(clientes_sel)]
+if modelos_sel:
+    df = df[df["Model"].isin(modelos_sel)]
+if estados_sel:
+    df = df[df["estado_conexion_std"].isin(estados_sel)]
+if regiones_sel:
+    df = df[df["Region_norm"].astype(str).str.strip().isin(regiones_sel)]
 
-if estado != "Todos":
-    df = df[df["clasificacion_conexion"] == estado]
-
-# Filtro por región (estricto a las 3 categorías)
-if region != "Todos":
-    df = df[df["Region_norm"].astype(str).str.strip() == region]
-
-# Orden por fecha de último mensaje (forzando UTC por robustez)
+# Orden por fecha de último mensaje
 if "ultimo_mensaje_recibido" in df.columns:
     df["ultimo_mensaje_recibido"] = pd.to_datetime(df["ultimo_mensaje_recibido"], errors="coerce", utc=True)
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
-# === KPIs ===
+# ==============================
+#  KPIs
+# ==============================
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
 
 total = len(df)
-conectados = df[df["clasificacion_conexion"] == "Conectado hoy"].shape[0]
-sin_conexion = df[df["clasificacion_conexion"] != "Conectado hoy"].shape[0]
-sin_gps = df[df["mensajes_sin_gps"] > 0].shape[0] if "mensajes_sin_gps" in df.columns else 0
+conectados = df[df["estado_conexion_std"] == "Conectado hoy"].shape[0]
+sin_conexion = total - conectados
 
 col1.metric("Total dispositivos", f"{total:,}")
 col2.metric("Conectados hoy", f"{conectados:,}", delta=f"{(conectados/total)*100:.1f}%" if total else "0%")
@@ -211,19 +280,25 @@ if "porcentaje_bateria" in df.columns and not df.empty:
 else:
     col6.metric("Batería < 20%", "N/A")
 
-# === Tabs ===
+# ==============================
+#  Tabs
+# ==============================
 tab1, tab2, tab3 = st.tabs([f"📊 Panel General – {filtro_titulo}", "📈 Análisis Avanzado", "⚙️ Control"])
 
-# =========================
-#  # TAB 1
-# =========================
+# ==============================
+#  TAB 1
+# ==============================
 with tab1:
     st.subheader(f"📊 Panel de Control – {filtro_titulo}")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if "clasificacion_conexion" in df.columns:
-            fig = px.pie(df, names="clasificacion_conexion", title=f"Distribución por Estado – {filtro_titulo}")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if "estado_conexion_std" in df.columns:
+            fig = px.pie(
+                df, names="estado_conexion_std",
+                category_orders={"estado_conexion_std": ESTADOS_CANONICOS},
+                title=f"Distribución por Estado – {filtro_titulo}"
+            )
             st.plotly_chart(fig, use_container_width=True)
 
         if "ranch_name" in df.columns:
@@ -232,7 +307,7 @@ with tab1:
             fig = px.bar(df_ranch, x="Ganadería", y="Nº Dispositivos", title=f"Dispositivos por Ganadería – {filtro_titulo}", text_auto=True)
             st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
+    with col_b:
         if "pct_recibidos_vs_esperados" in df.columns:
             fig = px.histogram(df, x="pct_recibidos_vs_esperados", nbins=20, title="Ratio de Mensajes Recibidos (%)")
             st.plotly_chart(fig, use_container_width=True)
@@ -249,12 +324,12 @@ with tab1:
     if busqueda:
         df_filtrado = df[df.apply(lambda row: busqueda.lower() in str(row).lower(), axis=1)]
 
-    # Ordenar por fecha (forzando UTC por robustez)
+    # Ordenar por fecha (UTC)
     if "ultimo_mensaje_recibido" in df_filtrado.columns:
         df_filtrado["ultimo_mensaje_recibido"] = pd.to_datetime(df_filtrado["ultimo_mensaje_recibido"], errors="coerce", utc=True)
         df_filtrado = df_filtrado.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
-    if cliente == "Todos":
+    if not clientes_sel:
         st.markdown("#### 📋 Tabla de dispositivos (vista completa)")
         st.data_editor(
             df_filtrado,
@@ -267,8 +342,8 @@ with tab1:
             hide_index=True
         )
     else:
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             st.markdown("#### 📋 Tabla de dispositivos")
             st.data_editor(
                 df_filtrado,
@@ -280,8 +355,7 @@ with tab1:
                 },
                 hide_index=True
             )
-
-        with col2:
+        with c2:
             st.markdown("#### 🗺️ Mapa última posición GPS")
             if "lat" in df.columns and "lon" in df.columns:
                 df_coords = df_filtrado.dropna(subset=["lat", "lon"]).copy()
@@ -311,7 +385,7 @@ with tab1:
                         <b>Nº Serie:</b> {row.get('SerialNumber', 'N/A')}<br>
                         <b>Cliente:</b> {row.get('customer_name', 'N/A')}<br>
                         <b>Ultima posición GPS:</b> {row.get('ultima_posicion_gps_valida', 'N/A')}<br>
-                        <b>Estado conexión:</b> {row.get('clasificacion_conexion', 'N/A')}<br>
+                        <b>Estado conexión:</b> {row.get('estado_conexion_std', 'N/A')}<br>
                         <b>Último mensaje:</b> {row.get('ultimo_mensaje_recibido', 'N/A')}
                         """
                         folium.Marker(location=[row["lat"], row["lon"]], popup=popup).add_to(cluster)
@@ -323,9 +397,9 @@ with tab1:
             else:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
 
-# =========================
-#  # TAB 2  (GANADERÍAS OK base vs AJUSTADA)
-# =========================
+# ==============================
+#  TAB 2 (Ganaderías OK base vs AJUSTADA)
+# ==============================
 with tab2:
     st.subheader(f"📈 Análisis Avanzado – {filtro_titulo}")
 
@@ -333,9 +407,6 @@ with tab2:
         st.info("No hay datos con los filtros actuales.")
         st.stop()
 
-    # =========================
-    # Helpers y columnas base
-    # =========================
     df_work = df.copy()
 
     # (1) Flag dispositivo OK base (≥50% válidas vs esperadas)
@@ -346,17 +417,17 @@ with tab2:
         df_work[col_pct_valid_vs_exp] = pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce")
         df_work["dispositivo_ok_base"] = (df_work[col_pct_valid_vs_exp] >= 50).fillna(False)
     else:
-        df_work["dispositivo_ok_base"] = False  # fallback conservador
+        df_work["dispositivo_ok_base"] = False
 
-    # (2) Última comunicación y flag "comunicó en 3 días"
-    now_utc = pd.Timestamp.now(tz="UTC")  # tz-aware
+    # (2) "Comunicó en 3 días" (idéntico a tu SQL: último mensaje >= NOW() - 3 días)
     if "ultimo_mensaje_recibido" in df_work.columns:
         ts_last = pd.to_datetime(df_work["ultimo_mensaje_recibido"], errors="coerce", utc=True)
-        df_work["comunico_3d"] = ((now_utc - ts_last) <= pd.Timedelta(days=3)).fillna(False)
+        limite_3d = now_utc - pd.Timedelta(days=3)
+        df_work["comunico_3d"] = (ts_last >= limite_3d).fillna(False)
     else:
-        df_work["comunico_3d"] = False  # si no hay columna, no podemos acreditar comunicación
+        df_work["comunico_3d"] = False
 
-    # Boolean de gateways online a nivel fila (solo informativo; NO afecta a OK/NO OK)
+    # (3) Gateways online (solo informativo; NO afecta OK/NO OK)
     def to_bool(x):
         if isinstance(x, bool):
             return x
@@ -368,9 +439,7 @@ with tab2:
     else:
         df_work["all_gateways_online_bool"] = False
 
-    # =========================
-    # Agregado por ganadería (base + ajustado)
-    # =========================
+    # (4) Agregado por ganadería (base + ajustado)
     for c in ["ranch_name", "customer_name", "Country", "Region"]:
         if c not in df_work.columns:
             df_work[c] = None
@@ -389,24 +458,23 @@ with tab2:
         "customer_name": first_non_null(g["customer_name"]),
         "Country": first_non_null(g["Country"]),
         "Region": first_non_null(g["Region"]),
-        # informativas
         "all_gateways_online": bool(g["all_gateways_online_bool"].fillna(False).all()),
         "ranch_gateway_overall_status": first_non_null(g["ranch_gateway_overall_status"]),
     })).reset_index()
 
-    # Porcentajes base
+    # Porcentajes base y base OK
     ranch_status["pct_ok_base"] = (
         100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]
     ).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_base"] = ranch_status["pct_ok_base"] >= 50.0
 
-    # Regla de ajuste: NO OK base y TODOS los NO OK comunicaron en 3 días
+    # Ajuste (idéntico a SQL):
+    # Si NO OK base y TODOS los NO OK comunicaron en 3 días → consideramos OK todos para el recálculo
     ranch_status["ajuste_aplicado"] = (
         (~ranch_status["ranch_ok_base"]) &
         (ranch_status["non_ok_count"] > 0) &
         (ranch_status["non_ok_comm3d_count"] == ranch_status["non_ok_count"])
     )
-
     ranch_status["n_ok_ajustada"] = ranch_status.apply(
         lambda r: r["n_dispositivos"] if r["ajuste_aplicado"] else r["n_ok_base"], axis=1
     )
@@ -415,13 +483,11 @@ with tab2:
     ).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_ajustada"] = ranch_status["pct_ok_ajustada"] >= 50.0
 
-    # =========================
-    # KPIs y selector de vista
-    # =========================
+    # Selector de vista
     vista = st.radio(
         "Vista de métrica",
         options=["Base", "Ajustada"],
-        index=1,  # por defecto mostramos la ajustada
+        index=1,
         horizontal=True
     )
 
@@ -437,20 +503,22 @@ with tab2:
     total_ranch = ranch_status.shape[0]
     n_ok_ranch = int(ranch_status["ranch_ok_view"].sum())
     n_no_ok_ranch = total_ranch - n_ok_ranch
+    promoted = int((~ranch_status["ranch_ok_base"] & ranch_status["ranch_ok_ajustada"]).sum())
 
     st.markdown(f"##### KPIs – Vista: **{titulo_view}**")
-    colk1, colk2, colk3, colk4 = st.columns(4)
+    colk1, colk2, colk3, colk4, colk5 = st.columns(5)
     colk1.metric("Ganaderías (con filtros)", f"{total_ranch:,}")
     colk2.metric("Ganaderías OK", f"{n_ok_ranch:,}", delta=f"{(n_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
     colk3.metric("Ganaderías NO OK", f"{n_no_ok_ranch:,}", delta=f"{(n_no_ok_ranch / total_ranch * 100):.1f}%" if total_ranch else "0%")
-    promoted = int((~ranch_status["ranch_ok_base"] & ranch_status["ranch_ok_ajustada"]).sum())
     colk4.metric("NO OK → OK por ajuste", f"{promoted:,}")
+    colk5.metric("Ranchos con ajuste aplicado", f"{int(ranch_status['ajuste_aplicado'].sum()):,}")
+
+    if promoted == 0:
+        st.info("ℹ️ Base y Ajustada coinciden: no hay ganaderías NO OK donde **todos** los NO OK hayan comunicado en los últimos 3 días.")
 
     st.divider()
 
-    # =========================
     # Visualizaciones
-    # =========================
     st.markdown(f"#### % de dispositivos OK por ganadería – {titulo_view}")
     if not ranch_status.empty:
         df_bar = ranch_status.sort_values("pct_ok_view", ascending=True)
@@ -486,9 +554,7 @@ with tab2:
 
     st.divider()
 
-    # =========================
-    # Tablas de trabajo
-    # =========================
+    # Tabla estado de ganaderías
     st.markdown("#### 📋 Estado de ganaderías (Base vs Ajustada)")
     cols_order = [
         "ranch_name", "customer_name", "Country", "Region",
@@ -496,7 +562,7 @@ with tab2:
         "n_ok_base", "pct_ok_base", "ranch_ok_base",
         "non_ok_count", "non_ok_comm3d_count", "ajuste_aplicado",
         "n_ok_ajustada", "pct_ok_ajustada", "ranch_ok_ajustada",
-        "all_gateways_online", "ranch_gateway_overall_status",  # informativas
+        "all_gateways_online", "ranch_gateway_overall_status",
     ]
     for c in cols_order:
         if c not in ranch_status.columns:
@@ -520,9 +586,7 @@ with tab2:
 
     st.markdown("—")
 
-    # =========================
-    # Foco en ganaderías NO OK en la vista elegida
-    # =========================
+    # Foco en ganaderías NO OK (vista elegida)
     st.markdown(f"#### 🔎 Foco en ganaderías NO OK – {titulo_view}")
 
     if vista == "Base":
@@ -545,7 +609,6 @@ with tab2:
         pct_dev_ok_base = (100.0 * ok_dev_base / total_dev) if total_dev else 0.0
         gw_ok = df_ranch_devices["all_gateways_online_bool"].fillna(False).all()
 
-        # Ajuste a nivel de la ganadería seleccionada
         non_ok = (~df_ranch_devices["dispositivo_ok_base"]).sum()
         non_ok_comm3d = (~df_ranch_devices["dispositivo_ok_base"] & df_ranch_devices["comunico_3d"]).sum()
         ajuste_aplica = (pct_dev_ok_base < 50.0) and (non_ok > 0) and (non_ok == non_ok_comm3d)
@@ -555,14 +618,14 @@ with tab2:
         c1.metric("Dispositivos", f"{total_dev:,}")
         c2.metric("% OK (base)", f"{pct_dev_ok_base:.1f}%")
         c3.metric("% OK (ajustada)", f"{pct_dev_ok_ajustada:.1f}%", delta="+ajuste" if ajuste_aplica else None)
-        c4.metric("Antenas online", "Sí" if gw_ok else "No")  # solo informativo
+        c4.metric("Antenas online", "Sí" if gw_ok else "No")
 
         # Tabla de dispositivos de la ganadería seleccionada
         df_ranch_devices["no_ok_base"] = ~df_ranch_devices["dispositivo_ok_base"]
         df_ranch_devices["comunico_3d"] = df_ranch_devices["comunico_3d"].astype(bool)
         cols_ranch_dev = [
             "device_id", "SerialNumber", "Model",
-            "clasificacion_conexion",
+            "estado_conexion_std",
             "Mensajes esperados (detallado)", "Mensajes recibidos (n)",
             "Mensaje con posición GPS (n)", "Posición GPS válida (n)",
             "Posición válida vs esperadas (%)",
@@ -584,9 +647,9 @@ with tab2:
     else:
         st.success("No hay ganaderías NO OK con los filtros actuales en esta vista.")
 
-# =========================
-#  # TAB 3 (Opcional futuro)
-# =========================
+# ==============================
+#  TAB 3 (Opcional futuro)
+# ==============================
 with tab3:
     st.subheader("⚙️ Control")
     st.write("Ajustes y herramientas de administración (próximamente).")
