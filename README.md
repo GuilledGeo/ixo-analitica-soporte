@@ -224,6 +224,7 @@ git push --force github main
 
 #(6) correr dash local
 
-streamlit run app/soporte_dashboard.py
+streamlit run app/soporte_dashboard_v3.py
 
+python -m streamlit run app/soporte_dashboard_v3.py
 ```
