@@ -308,7 +308,7 @@ with tab1:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
 
 # =========================
-# TAB 2 – Ajuste por ventana (UI compacta con número + accesos rápidos)
+# TAB 2 – Ajuste por ventana + umbrales editables
 # =========================
 with tab2:
     st.subheader(f"📈 Análisis Avanzado – {filtro_titulo}")
@@ -317,11 +317,16 @@ with tab2:
         st.info("No hay datos con los filtros actuales.")
         st.stop()
 
-    # ---- UI compacta de ventana ----
+    # ---- Estado inicial en sesión ----
     if "ventana_dias" not in st.session_state:
         st.session_state["ventana_dias"] = 3
+    if "umbral_ok_device" not in st.session_state:
+        st.session_state["umbral_ok_device"] = 50  # %
+    if "umbral_ok_ranch" not in st.session_state:
+        st.session_state["umbral_ok_ranch"] = 50   # %
 
-    cc1, cc2, cc3 = st.columns([1, 1, 2])
+    # ---- UI compacta ----
+    cc1, cc2, cc3, cc4, cc5 = st.columns([1, 1, 1, 1, 2])
     with cc1:
         val_num = st.number_input(
             "Ventana (días)",
@@ -330,11 +335,25 @@ with tab2:
                  "la consideramos **OK (ajustada)**."
         )
     with cc2:
+        new_umbral_device = st.number_input(
+            "% OK dispositivo", min_value=0, max_value=100,
+            value=int(st.session_state["umbral_ok_device"]), step=1,
+            help="Umbral mínimo de % de posiciones válidas vs esperadas para considerar un dispositivo OK."
+        )
+    with cc3:
+        new_umbral_ranch = st.number_input(
+            "% OK ganadería", min_value=0, max_value=100,
+            value=int(st.session_state["umbral_ok_ranch"]), step=1,
+            help="Umbral mínimo de % de dispositivos OK para considerar una ganadería OK."
+        )
+    with cc4:
         if st.button("Aplicar"):
             st.session_state["ventana_dias"] = int(val_num)
+            st.session_state["umbral_ok_device"] = int(new_umbral_device)
+            st.session_state["umbral_ok_ranch"] = int(new_umbral_ranch)
             _rerun()
-    with cc3:
-        st.markdown("**Selección rápida:**")
+    with cc5:
+        st.markdown("**Selección rápida (ventana):**")
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
         if r1c1.button("1d"):  st.session_state["ventana_dias"] = 1;  _rerun()
         if r1c2.button("3d"):  st.session_state["ventana_dias"] = 3;  _rerun()
@@ -343,21 +362,28 @@ with tab2:
         if r1c5.button("30d"): st.session_state["ventana_dias"] = 30; _rerun()
 
     ventana_dias = int(st.session_state["ventana_dias"])
-    st.caption(f"Ventana actual: **{ventana_dias} días**")
+    UMBRAL_DEVICE = int(st.session_state["umbral_ok_device"])
+    UMBRAL_RANCH  = int(st.session_state["umbral_ok_ranch"])
+
+    st.caption(f"Ventana actual: **{ventana_dias} días** · % OK dispositivo: **{UMBRAL_DEVICE}%** · % OK ganadería: **{UMBRAL_RANCH}%**")
 
     # ---- Cálculos (cliente) ----
     df_work = df.copy()
     now_utc = pd.Timestamp.now(tz="UTC")
 
+    # Dispositivo OK por % válidas vs esperadas
     col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
-    if "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
-        df_work["dispositivo_ok_base"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
-    elif col_pct_valid_vs_exp in df_work.columns:
+    if col_pct_valid_vs_exp in df_work.columns:
         df_work[col_pct_valid_vs_exp] = pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce")
-        df_work["dispositivo_ok_base"] = (df_work[col_pct_valid_vs_exp] >= 50).fillna(False)
+        df_work["dispositivo_ok_base"] = (df_work[col_pct_valid_vs_exp] >= UMBRAL_DEVICE).fillna(False)
+    elif "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
+        # Fallback si no tenemos el %; aviso de umbral fijo
+        st.info("No se encontró columna 'Posición válida vs esperadas (%)'. Se usa la columna booleana precalculada (umbral fijo de 50%).")
+        df_work["dispositivo_ok_base"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
     else:
         df_work["dispositivo_ok_base"] = False
 
+    # Comunicación dentro de la ventana
     if "ultimo_mensaje_recibido" in df_work.columns:
         ts_last = pd.to_datetime(df_work["ultimo_mensaje_recibido"], errors="coerce", utc=True)
         limite_nd = now_utc - pd.Timedelta(days=ventana_dias)
@@ -392,7 +418,9 @@ with tab2:
     ranch_status["pct_ok_base"] = (
         100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]
     ).replace([pd.NA, float("inf")], 0).fillna(0)
-    ranch_status["ranch_ok_base"] = ranch_status["pct_ok_base"] >= 50.0
+
+    # Umbral de ganadería OK (editable)
+    ranch_status["ranch_ok_base"] = ranch_status["pct_ok_base"] >= UMBRAL_RANCH
 
     ranch_status["ajuste_aplicado"] = (
         (~ranch_status["ranch_ok_base"]) &
@@ -405,17 +433,21 @@ with tab2:
     ranch_status["pct_ok_ajustada"] = (
         100.0 * ranch_status["n_ok_ajustada"] / ranch_status["n_dispositivos"]
     ).replace([pd.NA, float("inf")], 0).fillna(0)
-    ranch_status["ranch_ok_ajustada"] = ranch_status["pct_ok_ajustada"] >= 50.0
+    ranch_status["ranch_ok_ajustada"] = ranch_status["pct_ok_ajustada"] >= UMBRAL_RANCH
 
-    vista = st.radio("Vista de métrica", options=["Base", f"Ajustada ({ventana_dias} días)"], index=1, horizontal=True)
+    vista = st.radio(
+        "Vista de métrica",
+        options=["Base", f"Ajustada ({ventana_dias} días)"],
+        index=1, horizontal=True
+    )
     if vista == "Base":
         ranch_status["ranch_ok_view"] = ranch_status["ranch_ok_base"]
         ranch_status["pct_ok_view"] = ranch_status["pct_ok_base"]
-        titulo_view = "ESPERADAS (Base)"
+        titulo_view = f"ESPERADAS (Base, umbral {UMBRAL_RANCH}%)"
     else:
         ranch_status["ranch_ok_view"] = ranch_status["ranch_ok_ajustada"]
         ranch_status["pct_ok_view"] = ranch_status["pct_ok_ajustada"]
-        titulo_view = f"AJUSTADA (ventana {ventana_dias} días)"
+        titulo_view = f"AJUSTADA (ventana {ventana_dias} días, umbral {UMBRAL_RANCH}%)"
 
     total_ranch = ranch_status.shape[0]
     n_ok_ranch = int(ranch_status["ranch_ok_view"].sum())
@@ -453,14 +485,14 @@ with tab2:
     else:
         if vista == "Base":
             breakdown = ranch_status[~ranch_status["ranch_ok_base"]][["ranch_name","pct_ok_base"]]
-            fig = px.histogram(breakdown, x="pct_ok_base", nbins=10, title="Histograma % OK (Base) de las NO OK")
+            fig = px.histogram(breakdown, x="pct_ok_base", nbins=10, title=f"Histograma % OK (Base, umbral {UMBRAL_RANCH}%) de las NO OK")
         else:
             breakdown = ranch_status[~ranch_status["ranch_ok_ajustada"]][
                 ["ranch_name","pct_ok_ajustada","ajuste_aplicado","non_ok_count","non_ok_comm_window_count"]
             ]
             fig = px.histogram(
                 breakdown, x="pct_ok_ajustada", nbins=10,
-                title=f"Histograma % OK (Ajustada {ventana_dias}d) de las NO OK"
+                title=f"Histograma % OK (Ajustada {ventana_dias}d, umbral {UMBRAL_RANCH}%) de las NO OK"
             )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -513,7 +545,7 @@ with tab2:
 
         non_ok = (~df_ranch_devices["dispositivo_ok_base"]).sum()
         non_ok_commN = (~df_ranch_devices["dispositivo_ok_base"] & df_ranch_devices["comunico_window"]).sum()
-        ajuste_aplica = (pct_dev_ok_base < 50.0) and (non_ok > 0) and (non_ok == non_ok_commN)
+        ajuste_aplica = (pct_dev_ok_base < UMBRAL_RANCH) and (non_ok > 0) and (non_ok == non_ok_commN)
         ok_dev_ajustada = total_dev if ajuste_aplica else ok_dev_base
         pct_dev_ok_ajustada = (100.0 * ok_dev_ajustada / total_dev) if total_dev else 0.0
 
@@ -556,4 +588,6 @@ with tab3:
     st.subheader("⚙️ Control")
     st.write("Ajustes y herramientas de administración.")
     st.markdown(f"- Ventana de ajuste actual: **{int(st.session_state.get('ventana_dias', 3))} días**")
+    st.markdown(f"- Umbral OK dispositivo: **{int(st.session_state.get('umbral_ok_device', 50))}%**")
+    st.markdown(f"- Umbral OK ganadería: **{int(st.session_state.get('umbral_ok_ranch', 50))}%**")
     st.markdown(f"- CSV de origen: **{nombre_archivo}**")
