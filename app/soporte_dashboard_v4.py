@@ -32,7 +32,7 @@ def _rerun():
             pass
 
 # ==============================
-# Normalización de países
+# Normalización de países (solo Country, no afecta a clasificacion_conexion)
 # ==============================
 ISO_ALIAS_MAP = {"UR": "UY", "CH": "CL"}
 ISO3_TO_ISO2 = {
@@ -88,27 +88,8 @@ def cargar_desde_csv() -> tuple[pd.DataFrame, str, str]:
     return df, nombre_archivo, fecha_hora_formateada
 
 # ==============================
-# Helpers
+# Helpers (no tocan 'Conectado hoy')
 # ==============================
-ESTADOS_ORDENADOS = [
-    "Conectado hoy",
-    "Conexión 24-48h",
-    "Conexión 48-72h",
-    "Conexión 3-7 días",
-    "Conexión 7-15 días",
-    "Conexión 15 días - 1 mes",
-    "Conexión 1-3 meses",
-    "Conexión >3 meses",
-]
-
-def normaliza_estado(s: str | None) -> str:
-    if not isinstance(s, str) or not s.strip():
-        return "Conexión >3 meses"
-    s2 = " ".join(s.split())
-    s2 = s2.replace("Conexión >3  meses", "Conexión >3 meses")
-    s2 = s2.replace("Conexión 15 días-1 mes", "Conexión 15 días - 1 mes")
-    return s2
-
 def to_bool(x):
     if isinstance(x, bool): return x
     s = str(x).strip().lower()
@@ -152,9 +133,8 @@ else:
     df_original["Country_norm"] = None
     df_original["Region_norm"] = pd.Categorical(["Desconocido"]*len(df_original), categories=["LATAM","Europa","Desconocido"])
 
-# Enriquecimiento
+# Enriquecimiento temporal (NO tocamos la etiqueta resultante)
 df_original = aplicar_clasificaciones_temporales(df_original)
-df_original["clasificacion_conexion"] = df_original["clasificacion_conexion"].apply(normaliza_estado)
 
 # ==============================
 # Filtros
@@ -162,39 +142,69 @@ df_original["clasificacion_conexion"] = df_original["clasificacion_conexion"].ap
 st.markdown("### 🎛️ Filtros de visualización avanzados")
 colf1, colf2, colf3, colf4 = st.columns(4)
 
-cliente = colf1.selectbox("Cliente", ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()), index=0)
-modelo  = colf2.selectbox("Modelo de dispositivo", ["Todos"] + sorted(df_original["Model"].dropna().unique().tolist()), index=0)
+# Cliente (select único)
+cliente = colf1.selectbox(
+    "Cliente",
+    ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()),
+    index=0
+)
 
-# ⬇️ Por defecto SIN selección (si el usuario no elige nada => mostrar todos)
-estado_multi = colf3.multiselect(
-    "Estado de conexión (multi)",
-    options=ESTADOS_ORDENADOS,
+# Modelo -> MULTISELECT
+modelos_presentes = sorted(df_original["Model"].dropna().astype(str).unique().tolist()) \
+    if "Model" in df_original.columns else []
+modelos_multi = colf2.multiselect(
+    "Modelos de dispositivo (multi)",
+    options=modelos_presentes,
     default=[]
 )
 
-region = colf4.selectbox("Región (Country)", ["Todos","LATAM","Europa","Desconocido"], index=0)
+# Estado de conexión -> MULTISELECT, tal cual viene en datos
+if "clasificacion_conexion" in df_original.columns:
+    estados_presentes = sorted(pd.Series(df_original["clasificacion_conexion"]
+                                         .dropna().astype(str).unique()).tolist())
+else:
+    estados_presentes = []
+estado_multi = colf3.multiselect(
+    "Estado de conexión (multi)",
+    options=estados_presentes,
+    default=[]
+)
 
+# Región -> MULTISELECT
+regiones_presentes = ["LATAM", "Europa", "Desconocido"]
+regiones_multi = colf4.multiselect(
+    "Región (multi)",
+    options=regiones_presentes,
+    default=[]
+)
+
+# ---- Aplicar filtros ----
 df = df_original.copy()
 filtro_titulo = "Todos los clientes"
 if cliente != "Todos":
-    df = df[df["customer_name"] == cliente]; filtro_titulo = cliente
-if modelo != "Todos":
-    df = df[df["Model"] == modelo]
-# Solo filtramos si hay selección; si está vacío, mostramos todos
-if estado_multi:
-    df = df[df["clasificacion_conexion"].isin(estado_multi)]
-if region != "Todos":
-    df = df[df["Region_norm"].astype(str).str.strip() == region]
+    df = df[df["customer_name"] == cliente]
+    filtro_titulo = cliente
+
+# Solo filtra si hay selección; si no, muestra todo
+if modelos_multi and "Model" in df.columns:
+    df = df[df["Model"].astype(str).isin(modelos_multi)]
+
+if estado_multi and "clasificacion_conexion" in df.columns:
+    df = df[df["clasificacion_conexion"].astype(str).isin(estado_multi)]
+
+if regiones_multi and "Region_norm" in df.columns:
+    df = df[df["Region_norm"].astype(str).isin(regiones_multi)]
+
 if "ultimo_mensaje_recibido" in df.columns:
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
 # ==============================
-# KPIs
+# KPIs (sin recalcular 'Conectado hoy')
 # ==============================
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
 total = len(df)
-conectados = df[df["clasificacion_conexion"] == "Conectado hoy"].shape[0]
+conectados = df[df["clasificacion_conexion"].astype(str) == "Conectado hoy"].shape[0] if "clasificacion_conexion" in df.columns else 0
 sin_conexion = total - conectados
 col1.metric("Total dispositivos", f"{total:,}")
 col2.metric("Conectados hoy", f"{conectados:,}", delta=f"{(conectados/total*100):.1f}%" if total else "0%")
