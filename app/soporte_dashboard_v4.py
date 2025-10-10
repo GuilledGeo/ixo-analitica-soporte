@@ -10,9 +10,6 @@ from folium.plugins import MarkerCluster
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
-
-from src.features.consulta_1 import aplicar_clasificaciones_temporales
 
 # ==============================
 # Config básica
@@ -21,18 +18,16 @@ st.set_page_config(layout="wide", page_title="📱 Dashboard Soporte - Dispositi
 
 # ========= helper rerun compatible =========
 def _rerun():
-    # Streamlit >=1.27 usa st.rerun()
     if hasattr(st, "rerun"):
         st.rerun()
     else:
-        # fallback por si hay versiones antiguas
         try:
             st.experimental_rerun()  # type: ignore[attr-defined]
         except Exception:
             pass
 
 # ==============================
-# Normalización de países (solo Country, no afecta a clasificacion_conexion)
+# Normalización de países (no afecta clasificacion_conexion)
 # ==============================
 ISO_ALIAS_MAP = {"UR": "UY", "CH": "CL"}
 ISO3_TO_ISO2 = {
@@ -88,7 +83,7 @@ def cargar_desde_csv() -> tuple[pd.DataFrame, str, str]:
     return df, nombre_archivo, fecha_hora_formateada
 
 # ==============================
-# Helpers (no tocan 'Conectado hoy')
+# Helpers
 # ==============================
 def to_bool(x):
     if isinstance(x, bool): return x
@@ -133,8 +128,8 @@ else:
     df_original["Country_norm"] = None
     df_original["Region_norm"] = pd.Categorical(["Desconocido"]*len(df_original), categories=["LATAM","Europa","Desconocido"])
 
-# Enriquecimiento temporal (NO tocamos la etiqueta resultante)
-df_original = aplicar_clasificaciones_temporales(df_original)
+# 🚫 Importante: NO llamamos a aplicar_clasificaciones_temporales
+# Usamos la columna 'clasificacion_conexion' tal cual venga en el CSV.
 
 # ==============================
 # Filtros
@@ -145,25 +140,21 @@ colf1, colf2, colf3, colf4 = st.columns(4)
 # Cliente (select único)
 cliente = colf1.selectbox(
     "Cliente",
-    ["Todos"] + sorted(df_original["customer_name"].dropna().unique().tolist()),
+    ["Todos"] + sorted(df_original.get("customer_name", pd.Series(dtype=str)).dropna().unique().tolist()),
     index=0
 )
 
 # Modelo -> MULTISELECT
-modelos_presentes = sorted(df_original["Model"].dropna().astype(str).unique().tolist()) \
-    if "Model" in df_original.columns else []
+modelos_presentes = sorted(df_original.get("Model", pd.Series(dtype=str)).dropna().astype(str).unique().tolist())
 modelos_multi = colf2.multiselect(
     "Modelos de dispositivo (multi)",
     options=modelos_presentes,
     default=[]
 )
 
-# Estado de conexión -> MULTISELECT, tal cual viene en datos
-if "clasificacion_conexion" in df_original.columns:
-    estados_presentes = sorted(pd.Series(df_original["clasificacion_conexion"]
-                                         .dropna().astype(str).unique()).tolist())
-else:
-    estados_presentes = []
+# Estado de conexión -> MULTISELECT, tal cual viene
+estados_presentes = sorted(pd.Series(df_original.get("clasificacion_conexion", pd.Series(dtype=str))
+                                     .dropna().astype(str).unique()).tolist())
 estado_multi = colf3.multiselect(
     "Estado de conexión (multi)",
     options=estados_presentes,
@@ -182,10 +173,9 @@ regiones_multi = colf4.multiselect(
 df = df_original.copy()
 filtro_titulo = "Todos los clientes"
 if cliente != "Todos":
-    df = df[df["customer_name"] == cliente]
+    df = df[df.get("customer_name").astype(str) == cliente]
     filtro_titulo = cliente
 
-# Solo filtra si hay selección; si no, muestra todo
 if modelos_multi and "Model" in df.columns:
     df = df[df["Model"].astype(str).isin(modelos_multi)]
 
@@ -199,12 +189,14 @@ if "ultimo_mensaje_recibido" in df.columns:
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
 # ==============================
-# KPIs (sin recalcular 'Conectado hoy')
+# KPIs (Conectado hoy literal, sin recálculos)
 # ==============================
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
 total = len(df)
-conectados = df[df["clasificacion_conexion"].astype(str) == "Conectado hoy"].shape[0] if "clasificacion_conexion" in df.columns else 0
+conectados = 0
+if "clasificacion_conexion" in df.columns:
+    conectados = df[df["clasificacion_conexion"].astype(str) == "Conectado hoy"].shape[0]
 sin_conexion = total - conectados
 col1.metric("Total dispositivos", f"{total:,}")
 col2.metric("Conectados hoy", f"{conectados:,}", delta=f"{(conectados/total*100):.1f}%" if total else "0%")
@@ -327,35 +319,20 @@ with tab2:
         st.info("No hay datos con los filtros actuales.")
         st.stop()
 
-    # ---- Estado inicial en sesión ----
     if "ventana_dias" not in st.session_state:
         st.session_state["ventana_dias"] = 3
     if "umbral_ok_device" not in st.session_state:
-        st.session_state["umbral_ok_device"] = 50  # %
+        st.session_state["umbral_ok_device"] = 50
     if "umbral_ok_ranch" not in st.session_state:
-        st.session_state["umbral_ok_ranch"] = 50   # %
+        st.session_state["umbral_ok_ranch"] = 50
 
-    # ---- UI compacta ----
     cc1, cc2, cc3, cc4, cc5 = st.columns([1, 1, 1, 1, 2])
     with cc1:
-        val_num = st.number_input(
-            "Ventana (días)",
-            min_value=1, max_value=60, value=int(st.session_state["ventana_dias"]), step=1,
-            help="Si una ganadería es NO OK, pero **todos** sus dispositivos NO OK han comunicado dentro de esta ventana, "
-                 "la consideramos **OK (ajustada)**."
-        )
+        val_num = st.number_input("Ventana (días)", min_value=1, max_value=60, value=int(st.session_state["ventana_dias"]), step=1)
     with cc2:
-        new_umbral_device = st.number_input(
-            "% OK dispositivo", min_value=0, max_value=100,
-            value=int(st.session_state["umbral_ok_device"]), step=1,
-            help="Umbral mínimo de % de posiciones válidas vs esperadas para considerar un dispositivo OK."
-        )
+        new_umbral_device = st.number_input("% OK dispositivo", min_value=0, max_value=100, value=int(st.session_state["umbral_ok_device"]), step=1)
     with cc3:
-        new_umbral_ranch = st.number_input(
-            "% OK ganadería", min_value=0, max_value=100,
-            value=int(st.session_state["umbral_ok_ranch"]), step=1,
-            help="Umbral mínimo de % de dispositivos OK para considerar una ganadería OK."
-        )
+        new_umbral_ranch = st.number_input("% OK ganadería", min_value=0, max_value=100, value=int(st.session_state["umbral_ok_ranch"]), step=1)
     with cc4:
         if st.button("Aplicar"):
             st.session_state["ventana_dias"] = int(val_num)
@@ -374,26 +351,21 @@ with tab2:
     ventana_dias = int(st.session_state["ventana_dias"])
     UMBRAL_DEVICE = int(st.session_state["umbral_ok_device"])
     UMBRAL_RANCH  = int(st.session_state["umbral_ok_ranch"])
-
     st.caption(f"Ventana actual: **{ventana_dias} días** · % OK dispositivo: **{UMBRAL_DEVICE}%** · % OK ganadería: **{UMBRAL_RANCH}%**")
 
-    # ---- Cálculos (cliente) ----
     df_work = df.copy()
     now_utc = pd.Timestamp.now(tz="UTC")
 
-    # Dispositivo OK por % válidas vs esperadas
     col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
     if col_pct_valid_vs_exp in df_work.columns:
         df_work[col_pct_valid_vs_exp] = pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce")
         df_work["dispositivo_ok_base"] = (df_work[col_pct_valid_vs_exp] >= UMBRAL_DEVICE).fillna(False)
     elif "Dispositivo OK (≥50% válidas vs esperadas)" in df_work.columns:
-        # Fallback si no tenemos el %; aviso de umbral fijo
         st.info("No se encontró columna 'Posición válida vs esperadas (%)'. Se usa la columna booleana precalculada (umbral fijo de 50%).")
         df_work["dispositivo_ok_base"] = df_work["Dispositivo OK (≥50% válidas vs esperadas)"].astype(bool)
     else:
         df_work["dispositivo_ok_base"] = False
 
-    # Comunicación dentro de la ventana
     if "ultimo_mensaje_recibido" in df_work.columns:
         ts_last = pd.to_datetime(df_work["ultimo_mensaje_recibido"], errors="coerce", utc=True)
         limite_nd = now_utc - pd.Timedelta(days=ventana_dias)
@@ -425,11 +397,7 @@ with tab2:
         "ranch_gateway_overall_status": first_non_null(g["ranch_gateway_overall_status"]),
     })).reset_index()
 
-    ranch_status["pct_ok_base"] = (
-        100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]
-    ).replace([pd.NA, float("inf")], 0).fillna(0)
-
-    # Umbral de ganadería OK (editable)
+    ranch_status["pct_ok_base"] = (100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_base"] = ranch_status["pct_ok_base"] >= UMBRAL_RANCH
 
     ranch_status["ajuste_aplicado"] = (
@@ -437,19 +405,11 @@ with tab2:
         (ranch_status["non_ok_count"] > 0) &
         (ranch_status["non_ok_comm_window_count"] == ranch_status["non_ok_count"])
     )
-    ranch_status["n_ok_ajustada"] = ranch_status.apply(
-        lambda r: r["n_dispositivos"] if r["ajuste_aplicado"] else r["n_ok_base"], axis=1
-    )
-    ranch_status["pct_ok_ajustada"] = (
-        100.0 * ranch_status["n_ok_ajustada"] / ranch_status["n_dispositivos"]
-    ).replace([pd.NA, float("inf")], 0).fillna(0)
+    ranch_status["n_ok_ajustada"] = ranch_status.apply(lambda r: r["n_dispositivos"] if r["ajuste_aplicado"] else r["n_ok_base"], axis=1)
+    ranch_status["pct_ok_ajustada"] = (100.0 * ranch_status["n_ok_ajustada"] / ranch_status["n_dispositivos"]).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_ajustada"] = ranch_status["pct_ok_ajustada"] >= UMBRAL_RANCH
 
-    vista = st.radio(
-        "Vista de métrica",
-        options=["Base", f"Ajustada ({ventana_dias} días)"],
-        index=1, horizontal=True
-    )
+    vista = st.radio("Vista de métrica", options=["Base", f"Ajustada ({ventana_dias} días)"], index=1, horizontal=True)
     if vista == "Base":
         ranch_status["ranch_ok_view"] = ranch_status["ranch_ok_base"]
         ranch_status["pct_ok_view"] = ranch_status["pct_ok_base"]
@@ -497,13 +457,8 @@ with tab2:
             breakdown = ranch_status[~ranch_status["ranch_ok_base"]][["ranch_name","pct_ok_base"]]
             fig = px.histogram(breakdown, x="pct_ok_base", nbins=10, title=f"Histograma % OK (Base, umbral {UMBRAL_RANCH}%) de las NO OK")
         else:
-            breakdown = ranch_status[~ranch_status["ranch_ok_ajustada"]][
-                ["ranch_name","pct_ok_ajustada","ajuste_aplicado","non_ok_count","non_ok_comm_window_count"]
-            ]
-            fig = px.histogram(
-                breakdown, x="pct_ok_ajustada", nbins=10,
-                title=f"Histograma % OK (Ajustada {ventana_dias}d, umbral {UMBRAL_RANCH}%) de las NO OK"
-            )
+            breakdown = ranch_status[~ranch_status["ranch_ok_ajustada"]][["ranch_name","pct_ok_ajustada","ajuste_aplicado","non_ok_count","non_ok_comm_window_count"]]
+            fig = px.histogram(breakdown, x="pct_ok_ajustada", nbins=10, title=f"Histograma % OK (Ajustada {ventana_dias}d, umbral {UMBRAL_RANCH}%) de las NO OK")
         st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -511,8 +466,7 @@ with tab2:
     st.markdown("#### 📋 Estado de ganaderías (Base vs Ajustada)")
     cols_order = [
         "ranch_name","customer_name","Country","Region",
-        "n_dispositivos",
-        "n_ok_base","pct_ok_base","ranch_ok_base",
+        "n_dispositivos","n_ok_base","pct_ok_base","ranch_ok_base",
         "non_ok_count","non_ok_comm_window_count","ajuste_aplicado",
         "n_ok_ajustada","pct_ok_ajustada","ranch_ok_ajustada",
         "all_gateways_online","ranch_gateway_overall_status",
