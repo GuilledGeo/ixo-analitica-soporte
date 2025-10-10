@@ -9,8 +9,7 @@ from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
 import streamlit as st
 import pandas as pd
-import plotly.express as px  # seguimos usando Plotly en Tab 1
-import matplotlib.pyplot as plt  # Tab 2 pasa a Matplotlib
+import plotly.express as px
 
 # ==============================
 # Config básica
@@ -129,8 +128,8 @@ else:
     df_original["Country_norm"] = None
     df_original["Region_norm"] = pd.Categorical(["Desconocido"]*len(df_original), categories=["LATAM","Europa","Desconocido"])
 
-# 🚫 Importante: NO recalculamos clasificacion_conexion
-# Se usa tal cual venga del CSV.
+# 🚫 Importante: NO llamamos a aplicar_clasificaciones_temporales
+# Usamos la columna 'clasificacion_conexion' tal cual venga en el CSV.
 
 # ==============================
 # Filtros
@@ -153,7 +152,7 @@ modelos_multi = colf2.multiselect(
     default=[]
 )
 
-# Estado de conexión -> MULTISELECT (literal)
+# Estado de conexión -> MULTISELECT, tal cual viene
 estados_presentes = sorted(pd.Series(df_original.get("clasificacion_conexion", pd.Series(dtype=str))
                                      .dropna().astype(str).unique()).tolist())
 estado_multi = colf3.multiselect(
@@ -190,7 +189,7 @@ if "ultimo_mensaje_recibido" in df.columns:
     df = df.sort_values(by="ultimo_mensaje_recibido", ascending=False)
 
 # ==============================
-# KPIs (Conectado hoy literal)
+# KPIs (Conectado hoy literal, sin recálculos)
 # ==============================
 st.markdown("### 📌 Indicadores Clave")
 col1, col2, col3 = st.columns(3)
@@ -311,7 +310,7 @@ with tab1:
                 st.warning("El dataset no contiene columnas `lat` y `lon` necesarias para el mapa.")
 
 # =========================
-# TAB 2 – Ajuste por ventana + umbrales editables (Matplotlib)
+# TAB 2 – Ajuste por ventana + umbrales editables
 # =========================
 with tab2:
     st.subheader(f"📈 Análisis Avanzado – {filtro_titulo}")
@@ -320,7 +319,6 @@ with tab2:
         st.info("No hay datos con los filtros actuales.")
         st.stop()
 
-    # Estado inicial en sesión
     if "ventana_dias" not in st.session_state:
         st.session_state["ventana_dias"] = 3
     if "umbral_ok_device" not in st.session_state:
@@ -328,7 +326,6 @@ with tab2:
     if "umbral_ok_ranch" not in st.session_state:
         st.session_state["umbral_ok_ranch"] = 50
 
-    # UI compacta
     cc1, cc2, cc3, cc4, cc5 = st.columns([1, 1, 1, 1, 2])
     with cc1:
         val_num = st.number_input("Ventana (días)", min_value=1, max_value=60, value=int(st.session_state["ventana_dias"]), step=1)
@@ -356,11 +353,9 @@ with tab2:
     UMBRAL_RANCH  = int(st.session_state["umbral_ok_ranch"])
     st.caption(f"Ventana actual: **{ventana_dias} días** · % OK dispositivo: **{UMBRAL_DEVICE}%** · % OK ganadería: **{UMBRAL_RANCH}%**")
 
-    # ---- Cálculos (cliente) ----
     df_work = df.copy()
     now_utc = pd.Timestamp.now(tz="UTC")
 
-    # Dispositivo OK por % válidas vs esperadas
     col_pct_valid_vs_exp = "Posición válida vs esperadas (%)"
     if col_pct_valid_vs_exp in df_work.columns:
         df_work[col_pct_valid_vs_exp] = pd.to_numeric(df_work[col_pct_valid_vs_exp], errors="coerce")
@@ -371,7 +366,6 @@ with tab2:
     else:
         df_work["dispositivo_ok_base"] = False
 
-    # Comunicación dentro de la ventana
     if "ultimo_mensaje_recibido" in df_work.columns:
         ts_last = pd.to_datetime(df_work["ultimo_mensaje_recibido"], errors="coerce", utc=True)
         limite_nd = now_utc - pd.Timedelta(days=ventana_dias)
@@ -403,11 +397,7 @@ with tab2:
         "ranch_gateway_overall_status": first_non_null(g["ranch_gateway_overall_status"]),
     })).reset_index()
 
-    ranch_status["pct_ok_base"] = (
-        100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]
-    ).replace([pd.NA, float("inf")], 0).fillna(0)
-
-    # Umbral de ganadería OK (editable)
+    ranch_status["pct_ok_base"] = (100.0 * ranch_status["n_ok_base"] / ranch_status["n_dispositivos"]).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_base"] = ranch_status["pct_ok_base"] >= UMBRAL_RANCH
 
     ranch_status["ajuste_aplicado"] = (
@@ -415,19 +405,11 @@ with tab2:
         (ranch_status["non_ok_count"] > 0) &
         (ranch_status["non_ok_comm_window_count"] == ranch_status["non_ok_count"])
     )
-    ranch_status["n_ok_ajustada"] = ranch_status.apply(
-        lambda r: r["n_dispositivos"] if r["ajuste_aplicado"] else r["n_ok_base"], axis=1
-    )
-    ranch_status["pct_ok_ajustada"] = (
-        100.0 * ranch_status["n_ok_ajustada"] / ranch_status["n_dispositivos"]
-    ).replace([pd.NA, float("inf")], 0).fillna(0)
+    ranch_status["n_ok_ajustada"] = ranch_status.apply(lambda r: r["n_dispositivos"] if r["ajuste_aplicado"] else r["n_ok_base"], axis=1)
+    ranch_status["pct_ok_ajustada"] = (100.0 * ranch_status["n_ok_ajustada"] / ranch_status["n_dispositivos"]).replace([pd.NA, float("inf")], 0).fillna(0)
     ranch_status["ranch_ok_ajustada"] = ranch_status["pct_ok_ajustada"] >= UMBRAL_RANCH
 
-    vista = st.radio(
-        "Vista de métrica",
-        options=["Base", f"Ajustada ({ventana_dias} días)"],
-        index=1, horizontal=True
-    )
+    vista = st.radio("Vista de métrica", options=["Base", f"Ajustada ({ventana_dias} días)"], index=1, horizontal=True)
     if vista == "Base":
         ranch_status["ranch_ok_view"] = ranch_status["ranch_ok_base"]
         ranch_status["pct_ok_view"] = ranch_status["pct_ok_base"]
@@ -451,45 +433,40 @@ with tab2:
 
     st.divider()
 
-    # === Gráfica 1: % de dispositivos OK por ganadería (Matplotlib) ===
     st.markdown(f"#### % de dispositivos OK por ganadería – {titulo_view}")
     if not ranch_status.empty:
         df_bar = ranch_status.sort_values("pct_ok_view", ascending=True)
-        fig1 = plt.figure()
-        plt.barh(df_bar["ranch_name"], df_bar["pct_ok_view"])
-        plt.xlabel("% dispositivos OK")
-        plt.ylabel("Ganadería")
-        plt.tight_layout()
-        st.pyplot(fig1, clear_figure=True)
+        fig = px.bar(
+            df_bar, x="pct_ok_view", y="ranch_name",
+            color="ranch_ok_view",
+            color_discrete_map={True:"#2ca02c", False:"#d62728"},
+            text=df_bar["pct_ok_view"].map(lambda v: f"{v:.1f}%"),
+            labels={"pct_ok_view":"% dispositivos OK","ranch_name":"Ganadería","ranch_ok_view":"Ganadería OK"},
+            height=min(700, 30*max(6, df_bar.shape[0]))
+        )
+        fig.update_layout(xaxis_title="% dispositivos OK", yaxis_title=None, bargap=0.25)
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No hay datos de ganaderías para graficar.")
 
-    # === Gráfica 2: Histograma de ganaderías NO OK (Matplotlib) ===
     st.markdown(f"#### Distribución de ganaderías NO OK – {titulo_view}")
     if (~ranch_status["ranch_ok_view"]).sum() == 0:
         st.success("Todas las ganaderías están OK con los filtros actuales.")
     else:
         if vista == "Base":
-            vals = ranch_status.loc[~ranch_status["ranch_ok_base"], "pct_ok_base"].dropna().astype(float)
-            titulo = f"Histograma % OK (Base, umbral {UMBRAL_RANCH}%) de las NO OK"
+            breakdown = ranch_status[~ranch_status["ranch_ok_base"]][["ranch_name","pct_ok_base"]]
+            fig = px.histogram(breakdown, x="pct_ok_base", nbins=10, title=f"Histograma % OK (Base, umbral {UMBRAL_RANCH}%) de las NO OK")
         else:
-            vals = ranch_status.loc[~ranch_status["ranch_ok_ajustada"], "pct_ok_ajustada"].dropna().astype(float)
-            titulo = f"Histograma % OK (Ajustada {ventana_dias}d, umbral {UMBRAL_RANCH}%) de las NO OK"
-        fig2 = plt.figure()
-        plt.hist(vals, bins=10)
-        plt.title(titulo)
-        plt.xlabel("% OK")
-        plt.ylabel("Frecuencia")
-        plt.tight_layout()
-        st.pyplot(fig2, clear_figure=True)
+            breakdown = ranch_status[~ranch_status["ranch_ok_ajustada"]][["ranch_name","pct_ok_ajustada","ajuste_aplicado","non_ok_count","non_ok_comm_window_count"]]
+            fig = px.histogram(breakdown, x="pct_ok_ajustada", nbins=10, title=f"Histograma % OK (Ajustada {ventana_dias}d, umbral {UMBRAL_RANCH}%) de las NO OK")
+        st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
     st.markdown("#### 📋 Estado de ganaderías (Base vs Ajustada)")
     cols_order = [
         "ranch_name","customer_name","Country","Region",
-        "n_dispositivos",
-        "n_ok_base","pct_ok_base","ranch_ok_base",
+        "n_dispositivos","n_ok_base","pct_ok_base","ranch_ok_base",
         "non_ok_count","non_ok_comm_window_count","ajuste_aplicado",
         "n_ok_ajustada","pct_ok_ajustada","ranch_ok_ajustada",
         "all_gateways_online","ranch_gateway_overall_status",
