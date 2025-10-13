@@ -36,7 +36,8 @@ WITH active_devices AS (
 current_animals AS (
   SELECT
     "DeviceId",
-    MAX("Name") AS animal_name
+    MAX("Name")   AS animal_name,
+    MAX("Specie") AS animal_specie            -- << AÑADIDO
   FROM "Animals"
   WHERE "IsDeregistered" = FALSE
   GROUP BY "DeviceId"
@@ -44,7 +45,8 @@ current_animals AS (
 base AS (
   SELECT
     d.*,
-    ca.animal_name
+    ca.animal_name,
+    ca.animal_specie                          -- << AÑADIDO
   FROM active_devices d
   RIGHT JOIN current_animals ca
     ON ca."DeviceId" = d."Id"
@@ -147,19 +149,16 @@ gw_latest AS (
     ON lg."Id" = rlg."GatewayId"
 ),
 
--- ===== NUEVO: flags por dispositivo y rollup por ganadería =====
 device_flags AS (
   SELECT
     d."Id"         AS device_id,
     r."Id"         AS ranch_id,
     d."UplinksPerDay",
-    -- Dispositivo OK (criterio base 24h ≥ 50% válidas vs esperadas)
     CASE
       WHEN d."UplinksPerDay" > 0
            AND (COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100) >= 50
       THEN TRUE ELSE FALSE
     END AS device_ok_base,
-    -- ¿Ha comunicado en los últimos 3 días?
     COALESCE(gf.ultimo_mensaje_recibido >= NOW() - INTERVAL '3 days', FALSE) AS communicated_3d
   FROM base d
   JOIN "Ranches" r ON d."RanchId" = r."Id"
@@ -183,7 +182,6 @@ ranch_status AS (
     rr.*,
     ROUND(100.0 * ok_base_count / NULLIF(ranch_devices,0), 2) AS pct_ok_base,
     (100.0 * ok_base_count / NULLIF(ranch_devices,0)) >= 50 AS ranch_ok_base,
-    -- Si la ganadería es NO OK y TODOS los NO OK comunicaron en 3 días, ajustamos (contamos todos como OK)
     CASE
       WHEN (100.0 * ok_base_count / NULLIF(ranch_devices,0)) < 50
            AND non_ok_count > 0
@@ -191,7 +189,6 @@ ranch_status AS (
       THEN rr.ranch_devices
       ELSE ok_base_count
     END AS ok_adjusted_count,
-    -- Flag para saber si aplicó el ajuste
     CASE
       WHEN (100.0 * ok_base_count / NULLIF(ranch_devices,0)) < 50
            AND non_ok_count > 0
@@ -247,7 +244,8 @@ SELECT
 
   r."Name"    AS ranch_name,
   c."Name"    AS customer_name,
-  d.animal_name AS animal_name,
+  d.animal_name   AS animal_name,
+  d.animal_specie AS animal_specie,          -- << AÑADIDO AL SELECT FINAL
   r."Country" AS "Country",
   r."Region"  AS "Region",
 
@@ -298,7 +296,6 @@ SELECT
     END, 2
   )                                                              AS "No válida por filtro velocidad (%)",
 
-  -- Dispositivo OK (≥50% válidas vs esperadas)
   ROUND(
     CASE WHEN d."UplinksPerDay" > 0
          THEN COALESCE(gp.validas_n,0)::numeric / d."UplinksPerDay" * 100
@@ -310,7 +307,6 @@ SELECT
     THEN TRUE ELSE FALSE
   END                                                            AS "Dispositivo OK (≥50% válidas vs esperadas)",
 
-  -- ===== NUEVO: métricas OK por ganadería (base vs ajustada)
   rsf.pct_ok_base                                                AS "% dispositivos OK en ganadería",
   rsf.ranch_ok_base                                              AS "Ganadería OK",
   rsf.non_ok_count                                               AS "Dispositivos NO OK",
@@ -319,9 +315,6 @@ SELECT
   rsf.pct_ok_ajustada                                            AS "% dispositivos OK en ganadería (ajustada)",
   rsf.ranch_ok_ajustada                                          AS "Ganadería OK (ajustada)",
 
-  -- =============================
-  -- INFO GATEWAYS (informativo)
-  -- =============================
   COALESCE(ga.total_gateways, 0)              AS ranch_gateway_count,
   COALESCE(ga.gateways_online, 0)             AS gateways_online,
   COALESCE(ga.all_gateways_online, FALSE)     AS all_gateways_online,
@@ -348,7 +341,6 @@ LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
 LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
 LEFT JOIN ranch_status_final rsf ON rsf.ranch_id = r."Id"
 ORDER BY rsf.pct_ok_ajustada ASC NULLS LAST, r."Name", d."SerialNumber";
-
 
 """
 

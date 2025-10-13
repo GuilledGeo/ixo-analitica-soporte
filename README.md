@@ -214,14 +214,13 @@ git remote add gitlab git@git.ixorigue.com:ixorigue/analytics/ixo-analitica-sopo
 pip install -r requirements.txt
 
 #(5) Actualizar dash
-git add -f data/processed/consulta_01_2025-09-15_11-02_v01.csv
+git add -f data/processed/
 
 git commit -m "actualizacion dash diaria"
 
 git push github main
 
-git push --force github main
-
+ 
 #(6) correr dash local
 
 streamlit run app/soporte_dashboard_v3.py
