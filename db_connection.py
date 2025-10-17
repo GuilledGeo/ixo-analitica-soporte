@@ -4,8 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
 DB_CONFIG = {
-    "host": "10.0.1.6",
-    "port": 31702,
+    "host": "10.0.1.2",
+    "port": 31700,
     "dbname": "ixorigue",
     "user": "ixorigue_reader",
     "password": "4MDY7vqopVHjIcOk01ulJP75lBt9MsFEkRJiHq1DCSqsal9rQm",
