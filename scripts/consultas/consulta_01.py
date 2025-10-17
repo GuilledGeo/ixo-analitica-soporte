@@ -2,6 +2,7 @@
 """
 CONSULTA DT01 – KPI de Disponibilidad GPS por Dispositivo (últimas 24h)
 Con filtro severo: Animal activo + Device shipped (RIGHT JOIN sobre Animals)
++ Exclusión por Devices."IgnoreStatisticsUntil" (DATE, UTC) incluyendo el día completo
 
 Incluye:
 - "Posición válida vs esperadas (%)"
@@ -11,8 +12,8 @@ Incluye:
 - Campos de Ranches: Country, Region
 
 Notas:
+- Todo se evalúa en UTC (NOW() y rangos temporales coherentes).
 - Usa SQLAlchemy 2.x + pandas → envolver SIEMPRE la SQL con sqlalchemy.text(query)
-- Fija la zona horaria de sesión para evitar desfases con pgAdmin
 - Rellena NaN solo en columnas numéricas (no tocar fechas/bools/strings)
 """
 
@@ -23,7 +24,7 @@ import pandas as pd
 from sqlalchemy import text
 
 # =========================
-#  SQL PRINCIPAL (24h)
+#  SQL PRINCIPAL (24h, UTC)
 # =========================
 query = """
 WITH active_devices AS (
@@ -33,36 +34,60 @@ WITH active_devices AS (
     AND "Disabled" = FALSE
     AND "StatusType" = 'shipped'
 ),
+
 current_animals AS (
   SELECT
     "DeviceId",
     MAX("Name")   AS animal_name,
-    MAX("Specie") AS animal_specie            -- << AÑADIDO
+    MAX("Specie") AS animal_specie
   FROM "Animals"
   WHERE "IsDeregistered" = FALSE
   GROUP BY "DeviceId"
 ),
+
+-- Dispositivos base: activos + shipped + con animal activo
 base AS (
   SELECT
     d.*,
     ca.animal_name,
-    ca.animal_specie                          -- << AÑADIDO
+    ca.animal_specie
   FROM active_devices d
   RIGHT JOIN current_animals ca
     ON ca."DeviceId" = d."Id"
   WHERE d."Id" IS NOT NULL
 ),
+
+-- 🔒 Filtro adicional (UTC):
+--   IgnoreStatisticsUntil es DATE (UTC) y "incluye el día".
+--   Se incluye el device sólo si es NULL o es ANTERIOR a la fecha UTC de hoy.
+allowed_devices AS (
+  SELECT d."Id" AS device_id
+  FROM base d
+  WHERE d."IgnoreStatisticsUntil" IS NULL
+     OR d."IgnoreStatisticsUntil" < (NOW() AT TIME ZONE 'UTC')::date
+),
+
+-- A partir de aquí, todo el pipeline usa base_filtered
+base_filtered AS (
+  SELECT d.*
+  FROM base d
+  JOIN allowed_devices a
+    ON a.device_id = d."Id"
+),
+
 gps_stats_24h_all AS (
   SELECT
     d."Id" AS device_id,
     COUNT(dl."Time") AS total_mensajes_24h,
     COUNT(dl."Time") FILTER (WHERE NOT dl."HasLocation") AS mensajes_sin_gps_24h
-  FROM base d
+  FROM base_filtered d
   LEFT JOIN "DeviceLocations" dl
     ON dl."DeviceId" = d."Id"
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
 ),
+
+-- Nota: calculado para todos los DeviceLocations, luego se cruza con base_filtered
 gps_stats_full AS (
   SELECT
     dl."DeviceId",
@@ -84,6 +109,7 @@ gps_stats_full AS (
   FROM "DeviceLocations" dl
   GROUP BY dl."DeviceId"
 ),
+
 gps_stats_periodo AS (
   SELECT
     d."Id" AS device_id,
@@ -95,12 +121,13 @@ gps_stats_periodo AS (
     COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'parameters') AS no_valida_calidad_gps_n,
     COUNT(dl."Time") FILTER (WHERE dl."HasLocation" AND NOT dl."IsValid" AND dl."InvalidReason" = 'distance')   AS no_valida_filtro_velocidad_n,
     COUNT(DISTINCT DATE(dl."Time"))                                     AS dias_con_datos
-  FROM base d
+  FROM base_filtered d
   LEFT JOIN "DeviceLocations" dl
     ON dl."DeviceId" = d."Id"
    AND dl."Time" >= NOW() - INTERVAL '24 HOURS'
   GROUP BY d."Id"
 ),
+
 gw_agg AS (
   SELECT
     rlg."RanchId"                                   AS ranch_id,
@@ -114,6 +141,7 @@ gw_agg AS (
     ON lg."Id" = rlg."GatewayId"
   GROUP BY rlg."RanchId"
 ),
+
 gw_derived AS (
   SELECT
     a.ranch_id,
@@ -132,6 +160,7 @@ gw_derived AS (
     END                                                       AS ranch_gateway_overall_status
   FROM gw_agg a
 ),
+
 gw_latest AS (
   SELECT
     rlg."RanchId"                           AS ranch_id,
@@ -160,7 +189,7 @@ device_flags AS (
       THEN TRUE ELSE FALSE
     END AS device_ok_base,
     COALESCE(gf.ultimo_mensaje_recibido >= NOW() - INTERVAL '3 days', FALSE) AS communicated_3d
-  FROM base d
+  FROM base_filtered d
   JOIN "Ranches" r ON d."RanchId" = r."Id"
   LEFT JOIN gps_stats_periodo gp ON gp.device_id = d."Id"
   LEFT JOIN gps_stats_full    gf ON gf."DeviceId" = d."Id"
@@ -245,7 +274,7 @@ SELECT
   r."Name"    AS ranch_name,
   c."Name"    AS customer_name,
   d.animal_name   AS animal_name,
-  d.animal_specie AS animal_specie,          -- << AÑADIDO AL SELECT FINAL
+  d.animal_specie AS animal_specie,
   r."Country" AS "Country",
   r."Region"  AS "Region",
 
@@ -331,7 +360,7 @@ SELECT
     ELSE ROUND(EXTRACT(EPOCH FROM (NOW() - gl.gateway_last_seen)) / 3600.0, 2)
   END                                         AS horas_desde_ultimo_visto
 
-FROM base d
+FROM base_filtered d
 JOIN "Ranches" r ON d."RanchId" = r."Id"
 JOIN "Customers" c ON r."CustomerId" = c."Id" AND c."Status" = 'active'
 LEFT JOIN gps_stats_24h_all g24 ON g24.device_id = d."Id"
@@ -341,16 +370,15 @@ LEFT JOIN gw_derived ga ON ga.ranch_id = r."Id"
 LEFT JOIN gw_latest  gl ON gl.ranch_id = r."Id" AND gl.rn = 1
 LEFT JOIN ranch_status_final rsf ON rsf.ranch_id = r."Id"
 ORDER BY rsf.pct_ok_ajustada ASC NULLS LAST, r."Name", d."SerialNumber";
-
 """
 
 # =========================
-#  EJECUCIÓN DESDE PYTHON
+#  EJECUCIÓN DESDE PYTHON (UTC)
 # =========================
-def ejecutar(engine, set_timezone: str = "Europe/Madrid"):
+def ejecutar(engine, set_timezone: str = "UTC"):
     """
     Ejecuta la consulta usando SQLAlchemy 2.x y pandas.
-    - Fija la zona horaria de sesión (por defecto Europe/Madrid).
+    - Fija la zona horaria de sesión (por defecto UTC).
     - Envuélvela con sqlalchemy.text() para evitar problemas con CTEs/ventanas.
     - Rellena NaN solo en columnas numéricas.
     """
