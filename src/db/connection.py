@@ -10,8 +10,11 @@ DB_CONFIG = {
     "password": "4MDY7vqopVHjIcOk01ulJP75lBt9MsFEkRJiHq1DCSqsal9rQm",
     "sslmode": "require" 
 }
-#91.99.186.170
+
 def conectar_db():
+    """
+    Crea conexión optimizada para réplica de lectura PostgreSQL
+    """
     try:
         url = URL.create(
             drivername="postgresql+psycopg2",
@@ -22,7 +25,21 @@ def conectar_db():
             database=DB_CONFIG["dbname"],
             query={"sslmode": DB_CONFIG["sslmode"]}
         )
-        engine = create_engine(url)
+        
+        engine = create_engine(
+            url,
+            connect_args={
+                "connect_timeout": 10,
+                # Configuración para réplicas de lectura
+                "options": "-c default_transaction_read_only=on -c statement_timeout=600000"
+            },
+            pool_pre_ping=True,  # Verifica conexiones antes de usarlas
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=3600,  # Recicla conexiones cada hora
+            isolation_level="REPEATABLE READ"  # Nivel de aislamiento más estable
+        )
+        
         return engine
     except Exception as e:
         raise RuntimeError(f"❌ Error al conectar con la base de datos: {e}")

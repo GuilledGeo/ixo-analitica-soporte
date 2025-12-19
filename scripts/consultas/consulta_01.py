@@ -1,27 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 CONSULTA DT01 – KPI de Disponibilidad GPS por Dispositivo (últimas 24h)
-Con filtro severo: Animal activo + Device shipped (RIGHT JOIN sobre Animals)
-+ Exclusión por Devices."IgnoreStatisticsUntil" (DATE, UTC) incluyendo el día completo
-
-Incluye:
-- "Posición válida vs esperadas (%)"
-- "Dispositivo OK (>50% válidas vs esperadas)"
-- "% dispositivos OK en ganadería"
-- "Ganadería OK (>50% dispositivos OK)"
-- Campos de Ranches: Country, Region
-
-Notas:
-- Todo se evalúa en UTC (NOW() y rangos temporales coherentes).
-- Usa SQLAlchemy 2.x + pandas → envolver SIEMPRE la SQL con sqlalchemy.text(query)
-- Rellena NaN solo en columnas numéricas (no tocar fechas/bools/strings)
+Con retry automático para conflictos con recovery en réplicas de lectura
 """
 
 import os
 import inspect
 import traceback
+import time
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 # =========================
 #  SQL PRINCIPAL (24h, UTC)
@@ -373,36 +362,61 @@ ORDER BY rsf.pct_ok_ajustada ASC NULLS LAST, r."Name", d."SerialNumber";
 """
 
 # =========================
-#  EJECUCIÓN DESDE PYTHON (UTC)
+#  FUNCIÓN CON RETRY
 # =========================
-def ejecutar(engine, set_timezone: str = "UTC"):
+def ejecutar(engine, set_timezone: str = "UTC", max_reintentos: int = 3):
     """
-    Ejecuta la consulta usando SQLAlchemy 2.x y pandas.
-    - Fija la zona horaria de sesión (por defecto UTC).
-    - Envuélvela con sqlalchemy.text() para evitar problemas con CTEs/ventanas.
-    - Rellena NaN solo en columnas numéricas.
+    Ejecuta la consulta con retry automático para conflictos con recovery.
+    - Implementa backoff exponencial
+    - Detecta específicamente errores de réplica
     """
     try:
         frame_file = inspect.getfile(inspect.currentframe())
         nombre_script = os.path.splitext(os.path.basename(frame_file))[0]
     except Exception:
-        nombre_script = "consulta_dt01"
+        nombre_script = "consulta_01"
 
-    try:
-        with engine.connect() as con:
-            if set_timezone:
-                con.exec_driver_sql(f"SET TIME ZONE '{set_timezone}';")
+    for intento in range(max_reintentos):
+        try:
+            with engine.connect() as con:
+                # Configurar sesión para réplica de lectura
+                if set_timezone:
+                    con.exec_driver_sql(f"SET TIME ZONE '{set_timezone}';")
+                con.exec_driver_sql("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;")
+                
+                # Ejecutar query
+                df = pd.read_sql_query(text(query), con)
 
-            df = pd.read_sql_query(text(query), con)
+            # Rellenar NaN solo en columnas numéricas
+            num_cols = df.select_dtypes(include=["number"]).columns
+            if len(num_cols) > 0:
+                df[num_cols] = df[num_cols].fillna(0)
 
-        num_cols = df.select_dtypes(include=["number"]).columns
-        if len(num_cols) > 0:
-            df[num_cols] = df[num_cols].fillna(0)
+            print(f"✅ Consulta {nombre_script} ejecutada. Filas: {len(df)} | Columnas: {len(df.columns)}")
+            return df
 
-        print(f"✅ Consulta {nombre_script} ejecutada. Filas: {len(df)} | Columnas: {len(df.columns)}")
-        return df
+        except OperationalError as e:
+            error_msg = str(e)
+            
+            # Detectar conflicto con recovery
+            if "conflict with recovery" in error_msg or "SerializationFailure" in error_msg:
+                if intento < max_reintentos - 1:
+                    tiempo_espera = 3 * (intento + 1)  # 3s, 6s, 9s
+                    print(f"⚠️ Conflicto con recovery detectado. Reintentando en {tiempo_espera}s... (Intento {intento + 1}/{max_reintentos})")
+                    time.sleep(tiempo_espera)
+                else:
+                    print(f"❌ Error tras {max_reintentos} intentos: {e}")
+                    traceback.print_exc()
+                    return pd.DataFrame()
+            else:
+                # Otro tipo de error
+                print(f"❌ Error al ejecutar la consulta {nombre_script}: {e}")
+                traceback.print_exc()
+                return pd.DataFrame()
+                
+        except Exception as e:
+            print(f"❌ Error inesperado en {nombre_script}: {e}")
+            traceback.print_exc()
+            return pd.DataFrame()
 
-    except Exception as e:
-        print(f"❌ Error al ejecutar la consulta {nombre_script}: {e}")
-        traceback.print_exc()
-        return pd.DataFrame()
+    return pd.DataFrame()
